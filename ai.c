@@ -13,6 +13,7 @@
 /////////////////////////////////////
 
 #pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCUnusedMacroInspection"
 #pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #define CsBot_AI_H//DO NOT delete this line
 #ifndef CSBOT_REAL
@@ -27,7 +28,6 @@
 #endif
 
 #include <stdint.h>
-#include <stdlib.h>
 
 #define CsBot_AI_C //DO NOT delete this line
 
@@ -36,6 +36,17 @@ typedef int bool;
 //The robot ID : It must be two char, such as '00','kl' or 'Cr'.
 char AI_MyID[2] = {'0', '2'};
 
+/***
+ *    ######## ##    ## ########  ########  ######
+ *       ##     ##  ##  ##     ## ##       ##    ##
+ *       ##      ####   ##     ## ##       ##
+ *       ##       ##    ########  ######    ######
+ *       ##       ##    ##        ##             ##
+ *       ##       ##    ##        ##       ##    ##
+ *       ##       ##    ##        ########  ######
+ */
+
+//========== POS ==========
 typedef struct {
     int x, y;
 } pos;
@@ -47,6 +58,7 @@ pos *new_pos(int xa, int ya) {
     return p;
 }
 
+//========== AREA ==========
 typedef struct {
     int xa, xb, ya, yb;
 } area;
@@ -60,6 +72,17 @@ area *new_area(int xa, int xb, int ya, int yb) {
     return o;
 }
 
+/***
+ *    ##     ##    ###    ########  ####    ###    ########  ##       ########  ######
+ *    ##     ##   ## ##   ##     ##  ##    ## ##   ##     ## ##       ##       ##    ##
+ *    ##     ##  ##   ##  ##     ##  ##   ##   ##  ##     ## ##       ##       ##
+ *    ##     ## ##     ## ########   ##  ##     ## ########  ##       ######    ######
+ *     ##   ##  ######### ##   ##    ##  ######### ##     ## ##       ##             ##
+ *      ## ##   ##     ## ##    ##   ##  ##     ## ##     ## ##       ##       ##    ##
+ *       ###    ##     ## ##     ## #### ##     ## ########  ######## ########  ######
+ */
+
+//========== COSPACE ==========
 int Duration = 0;
 int SuperDuration = 0;
 int bGameEnd = false;
@@ -90,7 +113,7 @@ int LED_1 = 0;
 int MyState = 0;
 int AI_SensorNum = 13;
 
-// constants
+//========== CONSTANTS ==========
 #define BORDER_MARGIN 20
 area AREAS[] = {
         {0 + BORDER_MARGIN, 360 - BORDER_MARGIN, BORDER_MARGIN, 270 - BORDER_MARGIN}
@@ -106,10 +129,10 @@ int AVOIDING_BORDER_TIME = 20;
 int DEPOSITING_TIME = 40;
 int RANDOM_COORDINATES_PADDING = 30;
 
-// program variables
+//========== PROGRAM variables ==========
 bool initialized = false;
 
-// state variables
+//========== STATE variables ==========
 bool isCollecting = false;
 int currentArea = 0;
 int currentCheckpoint = 0;
@@ -117,11 +140,19 @@ int avoidingBorderTime = 0;
 pos *avoidingBorderPos;
 int depositingTime = 0;
 
-// temporary variables
+//========== TEMPORARY variables ==========
 int lastState = 0;
 
 
-// =========== PROGRAM ============
+/***
+ *    ######## ##     ## ##    ##  ######  ######## ####  #######  ##    ##  ######
+ *    ##       ##     ## ###   ## ##    ##    ##     ##  ##     ## ###   ## ##    ##
+ *    ##       ##     ## ####  ## ##          ##     ##  ##     ## ####  ## ##
+ *    ######   ##     ## ## ## ## ##          ##     ##  ##     ## ## ## ##  ######
+ *    ##       ##     ## ##  #### ##          ##     ##  ##     ## ##  ####       ##
+ *    ##       ##     ## ##   ### ##    ##    ##     ##  ##     ## ##   ### ##    ##
+ *    ##        #######  ##    ##  ######     ##    ####  #######  ##    ##  ######
+ */
 
 // ========== COMPUTATION ==========
 
@@ -280,7 +311,16 @@ void goTo(pos *p) {
     }
 }
 
-// ========== PROGRAM ========
+
+/***
+ *    ########  ########   #######   ######   ########     ###    ##     ##
+ *    ##     ## ##     ## ##     ## ##    ##  ##     ##   ## ##   ###   ###
+ *    ##     ## ##     ## ##     ## ##        ##     ##  ##   ##  #### ####
+ *    ########  ########  ##     ## ##   #### ########  ##     ## ## ### ##
+ *    ##        ##   ##   ##     ## ##    ##  ##   ##   ######### ##     ##
+ *    ##        ##    ##  ##     ## ##    ##  ##    ##  ##     ## ##     ##
+ *    ##        ##     ##  #######   ######   ##     ## ##     ## ##     ##
+ */
 
 void init() {
     if (!initialized) {
@@ -363,7 +403,17 @@ void Game1() {
 
 }
 
-// ========== COSPACE Stuff (do not edit)
+/***
+ *     ######   #######   ######  ########     ###     ######  ########
+ *    ##    ## ##     ## ##    ## ##     ##   ## ##   ##    ## ##
+ *    ##       ##     ## ##       ##     ##  ##   ##  ##       ##
+ *    ##       ##     ##  ######  ########  ##     ## ##       ######
+ *    ##       ##     ##       ## ##        ######### ##       ##
+ *    ##    ## ##     ## ##    ## ##        ##     ## ##    ## ##
+ *     ######   #######   ######  ##        ##     ##  ######  ########
+ *
+ * COSPACE Stuff (do not edit)
+ */
 
 DLL_EXPORT void SetGameID(int GameID) {
     CurGame = GameID;
@@ -420,7 +470,7 @@ DLL_EXPORT void GetSuperObj(int *X, int *Y, int *num) {
 
 #endif ////CSBOT_REAL
 
-DLL_EXPORT void SetDataAI(volatile int *packet, volatile int *AI_IN) {
+DLL_EXPORT void SetDataAI(volatile int *packet, const volatile int *AI_IN) {
 
     int sum = 0;
 
@@ -497,6 +547,5 @@ DLL_EXPORT void OnTimer() {
             break;
     }
 }
-
 
 #pragma clang diagnostic pop
