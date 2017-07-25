@@ -72,6 +72,57 @@ area *new_area(int xa, int xb, int ya, int yb) {
     return o;
 }
 
+#include <math.h>
+
+typedef struct {
+    int x;
+    int y;
+} Vector;
+
+Vector *new_Vector(double x,double y){
+    Vector *o=malloc(sizeof());
+    o->y=y;
+    o->x=x;
+}
+
+double vector_size(Vector *A){
+    return sqrt(pow(A->x, 2),pow(A->y,2));
+}
+
+Vector *vector_vectorTo(Vector *A,Vector *B){
+    return new_Vector(B->x-A->x,B->y-A->y);
+}
+
+
+double *vector_distanceTo(Vector *A,Vector *B){
+    return vector_size(vector_vectorTo(A,B));
+}
+
+Direction *vector_direction(Vector *A){
+    return atan2(A->y, A->x);
+}
+
+Direction *vector_directionTo(Vector *A, Vector *B){
+    return vector_direction(vector_vectorTo(A,B));
+}
+
+Vector *vector_plus(Vector *A, Vector *B){
+    return new_Vector(A->x+B->x,A->y+B->y);
+}
+
+Vector *vector_plus(Vector *A, Vector *B){
+    return new_Vector(A->x-B->x,A->y-B->y);
+}
+
+Vector *vector_multiply(Vector *A, double k){
+    return new_Vector(A->x*k, A->y*k);
+}
+
+Vector *vector_invert(Vector *A){
+    return *new_Vector(-A->x,-A->y);
+}
+
+
 /***
  *    ##     ##    ###    ########  ####    ###    ########  ##       ########  ######
  *    ##     ##   ## ##   ##     ##  ##    ## ##   ##     ## ##       ##       ##    ##
