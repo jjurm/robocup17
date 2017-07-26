@@ -289,6 +289,8 @@ int AI_SensorNum = 13;
 
 //========== CONSTANTS ==========
 #define BORDER_MARGIN 20
+#define MAP_WIDTH 350
+#define MAP_HEIGHT 260
 
 int MIN_DEP_LOADED_OBJECTS = 4;
 int STD_SPEED = 2;
@@ -296,6 +298,9 @@ double STD_ANGLE_TOLERANCE = 4 * M_PI / 180;
 int AVOIDING_BORDER_TIME = 20;
 int DEPOSITING_TIME = 40;
 int RANDOM_COORDINATES_PADDING = 30;
+int US_DISTANCE = 6;
+double BORDER_DISTANCE = 30;
+double BORDER_COEFF_K = 20;
 
 //========== PROGRAM variables ==========
 bool initialized = false;
@@ -306,9 +311,15 @@ int collectingTime = 0;
 bool isLongerCollecting = false;
 int currentArea = 0;
 int currentCheckpoint = 0;
+int avoidingObstacleTime = 0;
 int avoidingBorderTime = 0;
 Vector *avoidingBorderPos;
 int depositingTime = 0;
+
+Vector *lastPosition;
+Direction *lastDirection;
+int motorLeft;
+int motorRight;
 
 //========== TEMPORARY variables ==========
 int lastState = 0;
@@ -351,13 +362,13 @@ void _anchor(int x, int y, int radius) {
 
 void _init_anchors() {
     //####################ANCHOR ####################
-    _anchor(102, 44, 40);
-    _anchor(93, 58, 40);
-    _anchor(110, 190, 40);
-    _anchor(155, 210, 40);
-    _anchor(175, 195, 40);
-    _anchor(205, 113, 40);
-    _anchor(160, 40, 40);
+    _anchor(102, 44, 20);
+    _anchor(93, 58, 20);
+    _anchor(110, 190, 20);
+    _anchor(155, 210, 20);
+    _anchor(175, 195, 20);
+    _anchor(205, 113, 20);
+    _anchor(160, 40, 20);
 }
 
 FlowLine *FLOWLINES[ANCHORS_COUNT];
@@ -436,7 +447,7 @@ double abs_double(double value) {
 
 // =========== COLORS ============
 
-bool isYellowRight() { return CSRight_R > 200 && CSRight_G > 200 && CSRight_B < 50; }
+/*bool isYellowRight() { return CSRight_R > 200 && CSRight_G > 200 && CSRight_B < 50; }
 
 bool isYellowLeft() { return CSLeft_R > 200 && CSLeft_G > 200 && CSLeft_B < 50; }
 
@@ -474,7 +485,116 @@ bool isOrangeLeft() {
     return ((CSLeft_R > 200 && CSLeft_R < 240) && (CSLeft_G > 80 && CSLeft_G < 110) && (CSLeft_B < 5));
 }
 
-bool isOrange() { return isOrangeRight() || isOrangeLeft(); }
+bool isOrange() { return isOrangeRight() || isOrangeLeft(); }*/
+
+bool isOrangeRight() {
+    return (((CSRight_R > 188 - 10) && (CSRight_R < 217 + 10)) && ((CSRight_G > 105 - 10) && (CSRight_G < 121 + 10)) &&
+            ((CSRight_B > 52 - 10) && (CSRight_B < 61 + 10)));
+}
+
+bool isOrangeLeft() {
+    return (((CSLeft_R > 188 - 10) && (CSLeft_R < 217 + 10)) && ((CSLeft_G > 105 - 10) && (CSLeft_G < 121 + 10)) &&
+            ((CSLeft_B > 52 - 10) && (CSLeft_B < 61 + 10)));
+}
+
+bool isOrange() { return isOrangeLeft() && isOrangeRight(); }
+
+bool isGreyRight() {
+    return (((CSRight_R > 140 - 10) && (CSRight_R < 161 + 10)) && ((CSRight_G > 145 - 10) && (CSRight_G < 166 + 10)) &&
+            ((CSRight_B > 189 - 10) && (CSRight_B < 215 + 10)));
+}
+
+bool isGreyLeft() {
+    return (((CSLeft_R > 140 - 10) && (CSLeft_R < 161 + 10)) && ((CSLeft_G > 145 - 10) && (CSLeft_G < 166 + 10)) &&
+            ((CSLeft_B > 189 - 10) && (CSLeft_B < 215 + 10)));
+}
+
+bool isGrey() { return isGreyLeft() && isGreyRight(); }
+
+bool isDarkredRight() {
+    return (((CSRight_R > 151 - 10) && (CSRight_R < 176 + 10)) && ((CSRight_G > 0 - 10) && (CSRight_G < 0 + 10)) &&
+            ((CSRight_B > 0 - 10) && (CSRight_B < 0 + 10)));
+}
+
+bool isDarkredLeft() {
+    return (((CSLeft_R > 151 - 10) && (CSLeft_R < 176 + 10)) && ((CSLeft_G > 0 - 10) && (CSLeft_G < 0 + 10)) &&
+            ((CSLeft_B > 0 - 10) && (CSLeft_B < 0 + 10)));
+}
+
+bool isDarkred() { return isDarkredLeft() && isDarkredRight(); }
+
+bool isYellowRight() {
+    return (((CSRight_R > 202 - 10) && (CSRight_R < 235 + 10)) && ((CSRight_G > 215 - 10) && (CSRight_G < 248 + 10)) &&
+            ((CSRight_B > 1 - 10) && (CSRight_B < 9 + 10)));
+}
+
+bool isYellowLeft() {
+    return (((CSLeft_R > 202 - 10) && (CSLeft_R < 235 + 10)) && ((CSLeft_G > 215 - 10) && (CSLeft_G < 248 + 10)) &&
+            ((CSLeft_B > 1 - 10) && (CSLeft_B < 9 + 10)));
+}
+
+bool isYellow() { return isYellowLeft() && isYellowRight(); }
+
+bool isBlackRight() {
+    return (((CSRight_R > 30 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 39 + 10)) &&
+            ((CSRight_B > 30 - 10) && (CSRight_B < 39 + 10)));
+}
+
+bool isBlackLeft() {
+    return (((CSLeft_R > 30 - 10) && (CSLeft_R < 39 + 10)) && ((CSLeft_G > 30 - 10) && (CSLeft_G < 39 + 10)) &&
+            ((CSLeft_B > 30 - 10) && (CSLeft_B < 39 + 10)));
+}
+
+bool isBlack() { return isBlackLeft() && isBlackRight(); }
+
+bool isDarkBlueRight() {
+    return (((CSRight_R > 1 - 10) && (CSRight_R < 1 + 10)) && ((CSRight_G > 150 - 10) && (CSRight_G < 170 + 10)) &&
+            ((CSRight_B > 255 - 10) && (CSRight_B < 255 + 10)));
+}
+
+bool isDarkBlueLeft() {
+    return (((CSLeft_R > 1 - 10) && (CSLeft_R < 1 + 10)) && ((CSLeft_G > 150 - 10) && (CSLeft_G < 170 + 10)) &&
+            ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
+}
+
+bool isDarkBlue() { return isDarkBlueLeft() && isDarkBlueRight(); }
+
+bool isRedRight() {
+    return (((CSRight_R > 232 - 10) && (CSRight_R < 255 + 10)) && ((CSRight_G > 29 - 10) && (CSRight_G < 39 + 10)) &&
+            ((CSRight_B > 29 - 10) && (CSRight_B < 39 + 10)));
+}
+
+bool isRedLeft() {
+    return (((CSLeft_R > 232 - 10) && (CSLeft_R < 255 + 10)) && ((CSLeft_G > 29 - 10) && (CSLeft_G < 39 + 10)) &&
+            ((CSLeft_B > 29 - 10) && (CSLeft_B < 39 + 10)));
+}
+
+bool isRed() { return isRedLeft() && isRedRight(); }
+
+bool isLightGrayRight() {
+    return (((CSRight_R > 180 - 10) && (CSRight_R < 206 + 10)) && ((CSRight_G > 191 - 10) && (CSRight_G < 217 + 10)) &&
+            ((CSRight_B > 251 - 10) && (CSRight_B < 255 + 10)));
+}
+
+bool isLightGrayLeft() {
+    return (((CSLeft_R > 180 - 10) && (CSLeft_R < 206 + 10)) && ((CSLeft_G > 191 - 10) && (CSLeft_G < 217 + 10)) &&
+            ((CSLeft_B > 251 - 10) && (CSLeft_B < 255 + 10)));
+}
+
+bool isLightGray() { return isLightGrayLeft() && isLightGrayRight(); }
+
+bool isBlueRight() {
+    return (((CSRight_R > 29 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 249 - 10) && (CSRight_G < 255 + 10)) &&
+            ((CSRight_B > 255 - 10) && (CSRight_B < 255 + 10)));
+}
+
+bool isBlueLeft() {
+    return (((CSLeft_R > 29 - 10) && (CSLeft_R < 39 + 10)) && ((CSLeft_G > 249 - 10) && (CSLeft_G < 255 + 10)) &&
+            ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
+}
+
+bool isBlue() { return isBlueLeft() && isBlueRight(); }
+
 
 // =========== AREAS ==========
 
@@ -488,11 +608,23 @@ Vector *randomCoordinates(int arean) {
 // =========== CHECKS ==========
 
 bool canCollect() {
-    return isRed() || isGreen() || isBlack();
+    return isRed() || isBlack() || isBlue();
+}
+
+bool seesObstacleLeft() {
+    return US_Left < US_DISTANCE;
+}
+
+bool seesObstacleFront() {
+    return US_Front < US_DISTANCE;
+}
+
+bool seesObstacleRight() {
+    return US_Right < US_DISTANCE;
 }
 
 bool shouldAvoidObstacle() {
-    return US_Right < 6 || US_Front < 6 || US_Left < 6 || isYellow();
+    return seesObstacleLeft() || seesObstacleFront() || seesObstacleRight() || isYellow();
 }
 
 bool shouldAvoidBorder(int arean) {
@@ -514,7 +646,7 @@ bool canDeposit() {
 
 // ========== POSITION ===========
 
-Vector *getEstimatedPosition() {
+Vector *getCurrentPosition() {
     return new_vector(PX, PY);
 }
 
@@ -522,8 +654,29 @@ Direction *getCurrentDirection() {
     return direction_fromDegrees(Compass + 90);
 }
 
+Vector *getEstimatedPosition() {
+    return lastPosition;
+}
+
 Direction *getEstimatedDirection() {
-    return getCurrentDirection();
+    return lastDirection;
+}
+
+bool isPositionKnown() {
+    Vector *position = getCurrentPosition();
+    return position->x != 0 || position->y != 0;
+}
+
+void observePosition() {
+    if (isPositionKnown()) {
+        lastPosition = getCurrentPosition();
+        lastDirection = getCurrentDirection();
+    } else {
+        double forward = (WheelLeft + WheelRight) / 2;
+        lastPosition = vector_plus(lastPosition, vector_radial(lastDirection, 0.6 * forward));
+        double rotation = abs(WheelLeft - WheelRight) / 2;
+        lastDirection = direction_plus(lastDirection, new_Direction(rotation * 4.48));
+    }
 }
 
 // ========== ACTIONS =============
@@ -647,10 +800,26 @@ Vector *influenceByFlowPoint(const Vector *position, const FlowPoint *flowPoint)
     return vector_radial(pullDirection, 1.0);
 }
 
+double forceOfBorder(double distance) {
+    double a = BORDER_DISTANCE;
+    double b = BORDER_COEFF_K;
+    double x = distance;
+    return max(0.0, 2 * (exp((-x) / b) - exp((-a) / b)) / (1 - exp((-a) / b)));
+}
+
+Vector *influenceByBorders(const Vector *position) {
+    Vector *v = new_vector(0, 0);
+    v = vector_plus(v, vector_radial(new_Direction(0.0), forceOfBorder(position->x))); // left border
+            v = vector_plus(v, vector_radial(new_Direction(M_PI / 2), forceOfBorder(position->y))); // bottom border
+            v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position->x))); // right border
+            v = vector_plus(v, vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
+}
+
 Vector *calculateMoveVector(Vector *position) {
     FlowPoint *nearestFlowPoint = calculateNearestFlowPoint(position);
-    Vector *influence = influenceByFlowPoint(position, nearestFlowPoint);
-    return influence;
+    Vector *infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
+    Vector *infBorders = influenceByBorders(position);
+    return vector_plus(infFlowPoint, infBorders);
 }
 
 /***
@@ -699,8 +868,19 @@ int doStates() {
     collectingTime = 0;
 
     // Avoid obstacle
+    if (avoidingObstacleTime > 0) {
+        avoidingObstacleTime--;
+        return 31;
+    }
     if (shouldAvoidObstacle()) {
-        move(-STD_SPEED - 1, STD_SPEED);
+        avoidingObstacleTime = 10;
+        if (seesObstacleLeft() || isYellowLeft()) {
+            move(-1, -3);
+        } else if (seesObstacleRight() || isYellowRight()) {
+            move(-3, -1);
+        } else {
+            move(-2, -2);
+        }
         return 30;
     }
 
@@ -732,10 +912,6 @@ int doStates() {
     //turnTo(target);
     steerTo(target);
 
-    debug1 = (int) toDegrees(*getEstimatedDirection());
-    debug2 = (int) toDegrees(*vector_directionTo(position, target));
-    //move(0,0);
-    //move(1,1);
     return 1;
 }
 
@@ -752,7 +928,10 @@ void Game1() {
     }
     ticks += 1;
 
+    observePosition();
+
     lastState = doStates();
+    debug1 = lastState;
 
     if (depositingTime > 0) {
         LED_1 = 2;
