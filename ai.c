@@ -301,6 +301,8 @@ int RANDOM_COORDINATES_PADDING = 30;
 int US_DISTANCE = 6;
 double BORDER_DISTANCE = 30;
 double BORDER_COEFF_K = 20;
+int RANDOM_VECTOR_STEP_DEVIATION = 20; // degrees
+double RANDOM_VECTOR_SIZE = 0.65;
 
 //========== PROGRAM variables ==========
 bool initialized = false;
@@ -320,6 +322,7 @@ Vector *lastPosition;
 Direction *lastDirection;
 int motorLeft;
 int motorRight;
+Direction *lastRandomDirection;
 
 //========== TEMPORARY variables ==========
 int lastState = 0;
@@ -399,9 +402,9 @@ typedef struct {
 
 rnd_state *new_rnd_state() {
     rnd_state *o = malloc(sizeof(rnd_state));
-    o->s1 = 1;
-    o->s2 = 7;
-    o->s3 = 15;
+    o->s1 = 51635231;
+    o->s2 = 8486513;
+    o->s3 = 8521688;
     return o;
 }
 
@@ -497,7 +500,7 @@ bool isOrangeLeft() {
             ((CSLeft_B > 52 - 10) && (CSLeft_B < 61 + 10)));
 }
 
-bool isOrange() { return isOrangeLeft() && isOrangeRight(); }
+bool isOrange() { return (isOrangeLeft() || isOrangeRight()); }
 
 bool isGreyRight() {
     return (((CSRight_R > 140 - 10) && (CSRight_R < 161 + 10)) && ((CSRight_G > 145 - 10) && (CSRight_G < 166 + 10)) &&
@@ -509,7 +512,7 @@ bool isGreyLeft() {
             ((CSLeft_B > 189 - 10) && (CSLeft_B < 215 + 10)));
 }
 
-bool isGrey() { return isGreyLeft() && isGreyRight(); }
+bool isGrey() { return (isGreyLeft() || isGreyRight()); }
 
 bool isDarkredRight() {
     return (((CSRight_R > 151 - 10) && (CSRight_R < 176 + 10)) && ((CSRight_G > 0 - 10) && (CSRight_G < 0 + 10)) &&
@@ -521,7 +524,7 @@ bool isDarkredLeft() {
             ((CSLeft_B > 0 - 10) && (CSLeft_B < 0 + 10)));
 }
 
-bool isDarkred() { return isDarkredLeft() && isDarkredRight(); }
+bool isDarkred() { return (isDarkredLeft() || isDarkredRight()); }
 
 bool isYellowRight() {
     return (((CSRight_R > 202 - 10) && (CSRight_R < 235 + 10)) && ((CSRight_G > 215 - 10) && (CSRight_G < 248 + 10)) &&
@@ -533,7 +536,7 @@ bool isYellowLeft() {
             ((CSLeft_B > 1 - 10) && (CSLeft_B < 9 + 10)));
 }
 
-bool isYellow() { return isYellowLeft() && isYellowRight(); }
+bool isYellow() { return (isYellowLeft() || isYellowRight()); }
 
 bool isBlackRight() {
     return (((CSRight_R > 30 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 39 + 10)) &&
@@ -545,7 +548,7 @@ bool isBlackLeft() {
             ((CSLeft_B > 30 - 10) && (CSLeft_B < 39 + 10)));
 }
 
-bool isBlack() { return isBlackLeft() && isBlackRight(); }
+bool isBlack() { return (isBlackLeft() || isBlackRight()); }
 
 bool isDarkBlueRight() {
     return (((CSRight_R > 1 - 10) && (CSRight_R < 1 + 10)) && ((CSRight_G > 150 - 10) && (CSRight_G < 170 + 10)) &&
@@ -557,7 +560,7 @@ bool isDarkBlueLeft() {
             ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
 }
 
-bool isDarkBlue() { return isDarkBlueLeft() && isDarkBlueRight(); }
+bool isDarkBlue() { return (isDarkBlueLeft() || isDarkBlueRight()); }
 
 bool isRedRight() {
     return (((CSRight_R > 232 - 10) && (CSRight_R < 255 + 10)) && ((CSRight_G > 29 - 10) && (CSRight_G < 39 + 10)) &&
@@ -569,7 +572,7 @@ bool isRedLeft() {
             ((CSLeft_B > 29 - 10) && (CSLeft_B < 39 + 10)));
 }
 
-bool isRed() { return isRedLeft() && isRedRight(); }
+bool isRed() { return (isRedLeft() || isRedRight()); }
 
 bool isLightGrayRight() {
     return (((CSRight_R > 180 - 10) && (CSRight_R < 206 + 10)) && ((CSRight_G > 191 - 10) && (CSRight_G < 217 + 10)) &&
@@ -581,7 +584,7 @@ bool isLightGrayLeft() {
             ((CSLeft_B > 251 - 10) && (CSLeft_B < 255 + 10)));
 }
 
-bool isLightGray() { return isLightGrayLeft() && isLightGrayRight(); }
+bool isLightGray() { return (isLightGrayLeft() || isLightGrayRight()); }
 
 bool isBlueRight() {
     return (((CSRight_R > 29 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 249 - 10) && (CSRight_G < 255 + 10)) &&
@@ -593,7 +596,7 @@ bool isBlueLeft() {
             ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
 }
 
-bool isBlue() { return isBlueLeft() && isBlueRight(); }
+bool isBlue() { return (isBlueLeft() || isBlueRight()); }
 
 
 // =========== AREAS ==========
@@ -608,7 +611,7 @@ Vector *randomCoordinates(int arean) {
 // =========== CHECKS ==========
 
 bool canCollect() {
-    return isRed() || isBlack() || isBlue();
+    return (isRed() || isBlack() || isBlue()) && LoadedObjects < 6;
 }
 
 bool seesObstacleLeft() {
@@ -672,10 +675,12 @@ void observePosition() {
         lastPosition = getCurrentPosition();
         lastDirection = getCurrentDirection();
     } else {
-        double forward = (WheelLeft + WheelRight) / 2;
+        /*double forward = (WheelLeft + WheelRight) / 2;
         lastPosition = vector_plus(lastPosition, vector_radial(lastDirection, 0.6 * forward));
         double rotation = abs(WheelLeft - WheelRight) / 2;
-        lastDirection = direction_plus(lastDirection, new_Direction(rotation * 4.48));
+        lastDirection = direction_plus(lastDirection, new_Direction(rotation * 4.48));*/
+
+        // stick to the last position
     }
 }
 
@@ -810,16 +815,24 @@ double forceOfBorder(double distance) {
 Vector *influenceByBorders(const Vector *position) {
     Vector *v = new_vector(0, 0);
     v = vector_plus(v, vector_radial(new_Direction(0.0), forceOfBorder(position->x))); // left border
-            v = vector_plus(v, vector_radial(new_Direction(M_PI / 2), forceOfBorder(position->y))); // bottom border
-            v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position->x))); // right border
-            v = vector_plus(v, vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
+    v = vector_plus(v, vector_radial(new_Direction(M_PI / 2), forceOfBorder(position->y))); // bottom border
+    v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position->x))); // right border
+    v = vector_plus(v,
+                    vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
+}
+
+Vector *influenceRandom() {
+    int offset = randn(RANDOM_VECTOR_STEP_DEVIATION * 2) - RANDOM_VECTOR_STEP_DEVIATION; // offset in degrees
+    lastRandomDirection = direction_plus(lastRandomDirection, direction_fromDegrees(offset));
+    return vector_radial(lastRandomDirection, RANDOM_VECTOR_SIZE);
 }
 
 Vector *calculateMoveVector(Vector *position) {
     FlowPoint *nearestFlowPoint = calculateNearestFlowPoint(position);
     Vector *infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
     Vector *infBorders = influenceByBorders(position);
-    return vector_plus(infFlowPoint, infBorders);
+    Vector *infRandom = influenceRandom();
+    return vector_plus(vector_plus(infFlowPoint, infBorders), infRandom);
 }
 
 /***
@@ -841,6 +854,8 @@ void init() {
         _init_areas();
         _init_anchors();
         _init_flowlines();
+
+        lastRandomDirection = new_Direction(0);
     }
 }
 
@@ -865,6 +880,7 @@ int doStates() {
         return 20;
     }
 
+    isLongerCollecting = false;
     collectingTime = 0;
 
     // Avoid obstacle
