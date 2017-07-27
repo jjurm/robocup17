@@ -63,149 +63,146 @@ typedef struct {
     double x, y;
 } Vector;
 
-Vector *new_vector(double xa, double ya) {
-    Vector *p = malloc(sizeof(Vector));
-    p->x = xa;
-    p->y = ya;
-    return p;
+Vector new_vector(double xa, double ya) {
+    Vector v;
+    v.x = xa;
+    v.y = ya;
+    return v;
 }
 
 typedef struct {
     int xa, xb, ya, yb;
 } Area;
 
-Area *new_area(int xa, int ya, int xb, int yb) {
-    Area *o = malloc(sizeof(Area));
-    o->xa = xa;
-    o->xb = xb;
-    o->ya = ya;
-    o->yb = yb;
-    return o;
+Area new_area(int xa, int ya, int xb, int yb) {
+    Area v;
+    v.xa = xa;
+    v.xb = xb;
+    v.ya = ya;
+    v.yb = yb;
+    return v;
 }
 
 typedef double Direction;
 
-Direction *new_Direction(double value) {
-    Direction *o = malloc(sizeof(Direction));
-    *o = direction_normalize(value);
-    return o;
+Direction new_Direction(double value) {
+    return value;
 }
 
 typedef struct {
-    Vector *point;
+    Vector point;
     double radius;
 } Anchor;
 
-Anchor *new_Anchor(Vector *point, double radius) {
-    Anchor *o = malloc(sizeof(Anchor));
-    o->point = point;
-    o->radius = radius;
-    return o;
+Anchor new_Anchor(Vector point, double radius) {
+    Anchor v;
+    v.point = point;
+    v.radius = radius;
+    return v;
 }
 
 typedef struct {
-    Vector *point;
+    Vector point;
     double radius;
-    Direction *direction;
+    Direction direction;
 } FlowPoint;
 
-FlowPoint *new_FlowPoint(Vector *point, double radius, Direction *direction) {
-    FlowPoint *o = malloc(sizeof(FlowPoint));
-    o->point = point;
-    o->radius = radius;
-    o->direction = direction;
-    return o;
+FlowPoint new_FlowPoint(Vector point, double radius, Direction direction) {
+    FlowPoint v;
+    v.point = point;
+    v.radius = radius;
+    v.direction = direction;
+    return v;
 }
 
 typedef struct {
-    Anchor *pa;
-    Anchor *pb;
+    Anchor pa;
+    Anchor pb;
 } FlowLine;
 
-FlowLine *new_FlowLine(Anchor *pa, Anchor *pb) {
-    FlowLine *o = malloc(sizeof(FlowLine));
-    o->pa = pa;
-    o->pb = pb;
-    return o;
+FlowLine new_FlowLine(Anchor pa, Anchor pb) {
+    FlowLine v;
+    v.pa = pa;
+    v.pb = pb;
+    return v;
 }
 
 typedef struct {
     double randomnessSize;
     int anchorCount;
-    Anchor *anchors[50];
-    FlowLine *flowLines[50];
+    Anchor anchors[30];
+    FlowLine flowLines[30];
     int flowPointCount;
-    FlowPoint *flowPoints[10];
+    FlowPoint flowPoints[10];
 } Environment;
 
 typedef struct {
     int count;
-    Vector *points[50];
+    Vector points[30];
 } Route;
 
 typedef struct {
-    Vector *a;
-    Vector *b;
+    Vector a;
+    Vector b;
 } Wall;
 
-Wall *new_Wall(Vector *a, Vector *b) {
-    Wall *o = malloc(sizeof(Wall));
-    o->a = a;
-    o->b = b;
-    return o;
+Wall new_Wall(Vector a, Vector b) {
+    Wall v;
+    v.a = a;
+    v.b = b;
+    return v;
 };
-
 
 //========== VECTOR ==========
 
-Vector *vector_radial(const Direction *direction, double size) {
+Vector vector_radial(const Direction direction, double size) {
     return new_vector(
-            cos((*direction)) * size,
-            sin((*direction)) * size
+            cos(direction) * size,
+            sin(direction) * size
     );
 }
 
-double vector_size(Vector *A) {
-    return sqrt(pow(A->x, 2) + pow(A->y, 2));
+double vector_size(Vector A) {
+    return sqrt(pow(A.x, 2) + pow(A.y, 2));
 }
 
-Vector *vector_vectorTo(const Vector *A, const Vector *B) {
-    return new_vector(B->x - A->x, B->y - A->y);
+Vector vector_vectorTo(const Vector A, const Vector B) {
+    return new_vector(B.x - A.x, B.y - A.y);
 }
 
-double vector_distanceTo(const Vector *A, const Vector *B) {
+double vector_distanceTo(const Vector A, const Vector B) {
     return vector_size(vector_vectorTo(A, B));
 }
 
-Direction *vector_direction(Vector *A) {
-    return new_Direction(atan2(A->y, A->x));
+Direction vector_direction(Vector A) {
+    return new_Direction(atan2(A.y, A.x));
 }
 
-Direction *vector_directionTo(const Vector *A, Vector *B) {
+Direction vector_directionTo(const Vector A, Vector B) {
     return vector_direction(vector_vectorTo(A, B));
 }
 
-Vector *vector_plus(Vector *A, Vector *B) {
-    return new_vector(A->x + B->x, A->y + B->y);
+Vector vector_plus(Vector A, Vector B) {
+    return new_vector(A.x + B.x, A.y + B.y);
 }
 
-Vector *vector_minus(Vector *A, Vector *B) {
-    return new_vector(A->x - B->x, A->y - B->y);
+Vector vector_minus(Vector A, Vector B) {
+    return new_vector(A.x - B.x, A.y - B.y);
 }
 
-Vector *vector_multiply(Vector *A, double k) {
-    return new_vector(A->x * k, A->y * k);
+Vector vector_multiply(Vector A, double k) {
+    return new_vector(A.x * k, A.y * k);
 }
 
-Vector *vector_invert(Vector *A) {
-    return new_vector(-A->x, -A->y);
+Vector vector_invert(Vector A) {
+    return new_vector(-A.x, -A.y);
 }
 
 //========== AREA ==========
 
 //========== DIRECTION ==========
 
-Direction *direction_fromDegrees(double degrees) {
+Direction direction_fromDegrees(double degrees) {
     return new_Direction(degrees * M_PI / 180);
 }
 
@@ -219,48 +216,47 @@ double direction_normalize(double value) {
     return value;
 }
 
-double direction_differenceTo(const Direction *t, const Direction *direction) {
-    double target = *direction;
-    if (target < (*t)) target += 2 * M_PI;
-    return target - (*t);
+double direction_differenceTo(const Direction t, Direction target) {
+    if (target < t) target += 2 * M_PI;
+    return target - t;
 }
 
-double direction_difference(const Direction *t, const Direction *direction) {
+double direction_difference(const Direction t, const Direction direction) {
     return min(
             direction_differenceTo(t, direction),
             direction_differenceTo(direction, t)
     );
 }
 
-Direction *direction_plus(const Direction *t, const Direction *direction) {
-    return new_Direction((*t) + (*direction));
+Direction direction_plus(const Direction t, const Direction direction) {
+    return new_Direction(t + direction);
 }
 
-Direction *direction_plus_double(const Direction *t, double val) {
-    return new_Direction((*t) + val);
+Direction direction_plus_double(const Direction t, double val) {
+    return new_Direction(t + val);
 }
 
-Direction *direction_minus(const Direction *t, const Direction *direction) {
-    return new_Direction((*t) - (*direction));
+Direction direction_minus(const Direction t, const Direction direction) {
+    return new_Direction(t - direction);
 }
 
-Direction *direction_invert(const Direction *t) {
-    return new_Direction((*t) + M_PI);
+Direction direction_invert(const Direction t) {
+    return new_Direction(t + M_PI);
 }
 
-double direction_degrees(const Direction *t) {
-    return (*t) * 180 / M_PI;
+double direction_degrees(const Direction t) {
+    return t * 180 / M_PI;
 }
 
-Direction *direction_mirrorWith(const Direction *t, const Direction *axis) {
-    return new_Direction(2 * (*axis) - (*t));
+Direction direction_mirrorWith(const Direction t, const Direction axis) {
+    return new_Direction(2 * axis - t);
 }
 
-Direction *direction_weightedAverageWith(Direction *t, Direction *direction, double weight) {
+Direction direction_weightedAverageWith(Direction t, Direction direction, double weight) {
     return vector_direction(vector_plus(vector_radial(t, 1 - weight), vector_radial(direction, weight)));
 }
 
-Direction *direction_averageWith(Direction *t, Direction *direction) {
+Direction direction_averageWith(Direction t, Direction direction) {
     return direction_weightedAverageWith(t, direction, 0.5);
 }
 
@@ -270,23 +266,23 @@ Direction *direction_averageWith(Direction *t, Direction *direction) {
 
 //========== FLOWLINE ==========
 
-FlowPoint *nearestFlowPoint(FlowLine *t, Vector *point) {
-    Vector *aToP = vector_vectorTo(t->pa->point, point);
-    Vector *aToB = vector_vectorTo(t->pa->point, t->pb->point);
-    double atb2 = pow(aToB->x, 2) + pow(aToB->y, 2);
-    double atp_dot_atb = aToP->x * aToB->x + aToP->y * aToB->y;
+FlowPoint nearestFlowPoint(FlowLine t, Vector point) {
+    Vector aToP = vector_vectorTo(t.pa.point, point);
+    Vector aToB = vector_vectorTo(t.pa.point, t.pb.point);
+    double atb2 = pow(aToB.x, 2) + pow(aToB.y, 2);
+    double atp_dot_atb = aToP.x * aToB.x + aToP.y * aToB.y;
 
     double tx = toRange(atp_dot_atb / atb2, 0, 1);
 
-    return new_FlowPoint(vector_plus(t->pa->point, vector_multiply(aToB, tx)),
-                         tx * t->pb->radius + (1 - tx) * t->pa->radius,
+    return new_FlowPoint(vector_plus(t.pa.point, vector_multiply(aToB, tx)),
+                         tx * t.pb.radius + (1 - tx) * t.pa.radius,
                          vector_direction(aToB));
 }
 
-FlowLine *flowline_move(FlowLine *t, Vector *moveVector) {
+FlowLine flowline_move(FlowLine t, Vector moveVector) {
     return new_FlowLine(
-            new_Anchor(vector_plus(t->pa->point, moveVector), t->pa->radius),
-            new_Anchor(vector_plus(t->pb->point, moveVector), t->pb->radius)
+            new_Anchor(vector_plus(t.pa.point, moveVector), t.pa.radius),
+            new_Anchor(vector_plus(t.pb.point, moveVector), t.pb.radius)
     );
 }
 
@@ -380,9 +376,10 @@ int loadedColor[] = {0, 0, 0}; // red, black, blue
 
 // Superobjects
 int superobjectCount = 0;
-Vector *superobjects[20];
-Vector *lastSuperobjectRegistered = NULL;
-FlowLine *superobjectFlowLine = NULL;
+Vector superobjects[20];
+Vector lastSuperobjectRegistered = {-1, -1};
+bool isFollowingSuperobject = false;
+FlowLine superobjectFlowLine = {};
 int superobjectIndex = NONE;
 
 //========== STATE variables ==========
@@ -399,13 +396,15 @@ int currentRoute = NONE;
 int currentRoutePoint = NONE;
 
 // moving and position
-Vector *lastPosition;
-Direction *lastDirection;
-Vector *estimatedPosition;
-Direction *estimatedDirection;
+Vector currentPosition;
+Direction currentDirection;
+Vector lastPosition;
+Direction lastDirection;
+Vector estimatedPosition;
+Direction estimatedDirection;
 int motorLeft;
 int motorRight;
-Direction *lastRandomDirection;
+Direction lastRandomDirection;
 
 //========== TEMPORARY variables ==========
 int lastState = 0;
@@ -425,16 +424,11 @@ int debug2 = -777;
 bool _was_init = false;
 
 #define AREAS_COUNT 1
-Area *AREAS[AREAS_COUNT];
+Area AREAS[AREAS_COUNT];
 int _index_area = 0;
 
 void _area(int x1, int y1, int x2, int y2) {
     AREAS[_index_area++] = new_area(x1, y1, x2, y2);
-}
-
-void _init_areas() {
-    //#################### AREA ####################
-    _area(1, 2, 3, 4);
 }
 
 // ========== ENVIRONMENTS ==========
@@ -465,8 +459,8 @@ void _init_flowlines() {
     for (int ei = 0; ei < ENVIRONMENT_COUNT; ei++) {
         Environment *e = &ENVIRONMENTS[ei];
         for (int i = 0; i < e->anchorCount; i++) {
-            Anchor *aa = e->anchors[i];
-            Anchor *ab = e->anchors[(i + 1) % e->anchorCount];
+            Anchor aa = e->anchors[i];
+            Anchor ab = e->anchors[(i + 1) % e->anchorCount];
             e->flowLines[i] = new_FlowLine(aa, ab);
         }
     }
@@ -489,7 +483,7 @@ void _routePoint(int route, int x, int y) {
 
 // =============WALLS=============
 #define WALLS_COUNT 1
-Wall *WALLS[WALLS_COUNT];
+Wall WALLS[WALLS_COUNT];
 
 int wall_count = 0;
 
@@ -535,6 +529,8 @@ void _init_values() {
     _routePoint(0, 338 + r2, 102 + r);
     _routePoint(0, 307, 170 + r);//before END
     _routePoint(0, 339, 247 + r);
+
+    _area(1, 2, 3, 4);
 }
 
 /***
@@ -748,10 +744,10 @@ bool isViolet() { return (isVioletLeft() || isVioletRight()); }
 
 // =========== AREAS ==========
 
-Vector *randomCoordinates(int arean) {
-    Area *a = AREAS[arean];
-    int x = randn(a->xb - a->xa - 2 * RANDOM_COORDINATES_PADDING) + a->xa + RANDOM_COORDINATES_PADDING;
-    int y = randn(a->yb - a->ya - 2 * RANDOM_COORDINATES_PADDING) + a->ya + RANDOM_COORDINATES_PADDING;
+Vector randomCoordinates(int arean) {
+    Area a = AREAS[arean];
+    int x = randn(a.xb - a.xa - 2 * RANDOM_COORDINATES_PADDING) + a.xa + RANDOM_COORDINATES_PADDING;
+    int y = randn(a.yb - a.ya - 2 * RANDOM_COORDINATES_PADDING) + a.ya + RANDOM_COORDINATES_PADDING;
     return new_vector(x, y);
 }
 
@@ -793,8 +789,8 @@ bool shouldAvoidObstacle() {
 }
 
 bool shouldAvoidBorder(int arean) {
-    Area *a = AREAS[arean];
-    return PX < a->xa || PY < a->ya || PX > a->xb || PY > a->yb;
+    Area a = AREAS[arean];
+    return PX < a.xa || PY < a.ya || PX > a.xb || PY > a.yb;
 }
 
 bool shouldFollowNextDeposit() {
@@ -811,32 +807,34 @@ bool canDeposit() {
 
 // ========== POSITION ===========
 
-Vector *getCurrentPosition() {
-    return new_vector(PX, PY);
+void saveCurrentPositionInfo() {
+    currentPosition = new_vector(PX, PY);
+    currentDirection = direction_fromDegrees(Compass + 90);
 }
 
-Direction *getCurrentDirection() {
-    return direction_fromDegrees(Compass + 90);
+Vector getCurrentPosition() {
+    return currentPosition;
 }
 
-Vector *getEstimatedPosition() {
-    //return lastPosition;
+Direction getCurrentDirection() {
+    return currentDirection;
+}
+
+Vector getEstimatedPosition() {
     return estimatedPosition;
 }
 
-Direction *getEstimatedDirection() {
-    //return lastDirection;
+Direction getEstimatedDirection() {
     return estimatedDirection;
 }
 
 bool isPositionKnown() {
-    Vector *position = getCurrentPosition();
-    return position->x != 0 || position->y != 0;
+    return currentPosition.x != 0 || currentPosition.y != 0;
 }
 
 void observePosition() {
+    saveCurrentPositionInfo();
     if (isPositionKnown()) {
-        free(lastPosition);
         lastPosition = estimatedPosition = getCurrentPosition();
         lastDirection = estimatedDirection = getCurrentDirection();
     } else {
@@ -848,11 +846,11 @@ void observePosition() {
 }
 
 int estPosX() {
-    return (int) getEstimatedPosition()->x;
+    return (int) getEstimatedPosition().x;
 }
 
 int estPosY() {
-    return (int) getEstimatedPosition()->y;
+    return (int) getEstimatedPosition().y;
 }
 
 int estDir() {
@@ -863,17 +861,15 @@ int estDir() {
 
 void registerSuperobject() {
     if (SuperObj_Num == 1 && (
-            lastSuperobjectRegistered == NULL ||
-            (SuperObj_X != lastSuperobjectRegistered->x && SuperObj_Y != lastSuperobjectRegistered->y)
+            SuperObj_X != lastSuperobjectRegistered.x && SuperObj_Y != lastSuperobjectRegistered.y
     )) {
-        Vector *superobject = new_vector(SuperObj_X + 10, SuperObj_Y);
+        Vector superobject = new_vector(SuperObj_X + 10, SuperObj_Y);
         lastSuperobjectRegistered = superobject;
         superobjects[superobjectCount++] = superobject;
     }
 }
 
 void unregisterSuperobject(int index) {
-    superobjects[index] = NULL;
     // if it's not the last, move the last to the 'index' position
     if (index != superobjectCount - 1) {
         superobjects[index] = superobjects[superobjectCount - 1];
@@ -899,58 +895,60 @@ bool findIntersection(double p0_x, double p0_y, double p1_x, double p1_y,
     return 0; // No collision
 }
 
-bool isNotObstructed(Vector *a, Vector *b) {
-    Direction *direction = vector_directionTo(a, b);
-    Vector *moveA = vector_radial(direction_plus_double(direction, M_PI / 2), ROBOT_WIDTH / 2);
-    Vector *moveB = vector_radial(direction_plus_double(direction, -M_PI / 2), ROBOT_WIDTH / 2);
-    Vector *aMovedA = vector_plus(a, moveA);
-    Vector *aMovedB = vector_plus(a, moveB);
-    Vector *bMovedA = vector_plus(b, moveA);
-    Vector *bMovedB = vector_plus(b, moveB);
+bool isNotObstructed(Vector a, Vector b) {
+    Direction direction = vector_directionTo(a, b);
+    Vector moveA = vector_radial(direction_plus_double(direction, M_PI / 2), ROBOT_WIDTH / 2);
+    Vector moveB = vector_radial(direction_plus_double(direction, -M_PI / 2), ROBOT_WIDTH / 2);
+    Vector aMovedA = vector_plus(a, moveA);
+    Vector aMovedB = vector_plus(a, moveB);
+    Vector bMovedA = vector_plus(b, moveA);
+    Vector bMovedB = vector_plus(b, moveB);
     for (int i = 0; i < wall_count; i++) {
-        Wall *wall = WALLS[i];
+        Wall wall = WALLS[i];
         if (findIntersection(
-                wall->a->x, wall->a->y, wall->b->x, wall->b->y,
-                aMovedA->x, aMovedA->y, bMovedA->x, bMovedA->y
+                wall.a.x, wall.a.y, wall.b.x, wall.b.y,
+                aMovedA.x, aMovedA.y, bMovedA.x, bMovedA.y
         ) || findIntersection(
-                wall->a->x, wall->a->y, wall->b->x, wall->b->y,
-                aMovedB->x, aMovedB->y, bMovedB->x, bMovedB->y
-        )) return false;
+                wall.a.x, wall.a.y, wall.b.x, wall.b.y,
+                aMovedB.x, aMovedB.y, bMovedB.x, bMovedB.y
+        ))
+            return false;
     }
     return true;
 }
 
 void generateSuperobjectRoute() {
-    Vector *position = getEstimatedPosition();
-    Vector *bestSuperobject = NULL;
+    Vector position = getEstimatedPosition();
+    Vector bestSuperobject = {};
     int bestSuperobjectIndex = NONE;
     double bestDistance = 0, distance;
     for (int index = 0; index < superobjectCount; index++) {
-        Vector *superobject = superobjects[index];
+        Vector superobject = superobjects[index];
         if (vector_distanceTo(position, superobject) < 141 && isNotObstructed(position, superobject)) {
             distance = vector_distanceTo(position, superobject);
-            if (bestSuperobject == NULL || distance < bestDistance) {
+            if (bestSuperobjectIndex == NONE || distance < bestDistance) {
                 bestDistance = distance;
                 bestSuperobject = superobject;
                 bestSuperobjectIndex = index;
             }
         }
     }
-    if (bestSuperobject != NULL) {
+    if (bestSuperobjectIndex != NONE) {
+        isFollowingSuperobject = true;
         superobjectFlowLine = new_FlowLine(
                 new_Anchor(position, SUPEROBJECT_FLOWLINE_RADIUS),
                 new_Anchor(bestSuperobject, SUPEROBJECT_FLOWLINE_RADIUS)
         );
         superobjectIndex = bestSuperobjectIndex;
     } else {
-        superobjectFlowLine = NULL;
+        isFollowingSuperobject = false;
         superobjectIndex = NONE;
     }
 };
 
 void stopFollowingSuperobject() {
     unregisterSuperobject(superobjectIndex);
-    superobjectFlowLine = NULL;
+    isFollowingSuperobject = false;
     superobjectIndex = NONE;
 }
 
@@ -990,8 +988,8 @@ double getSteerAngle(double relativeAngle) {
     return relativeAngle;
 }
 
-double getSteerAngleTo(Vector *targetPoint) {
-    Direction *targetDirection = vector_directionTo(getEstimatedPosition(), targetPoint);
+double getSteerAngleTo(Vector targetPoint) {
+    Direction targetDirection = vector_directionTo(getEstimatedPosition(), targetPoint);
     return getSteerAngle(direction_differenceTo(getEstimatedDirection(), targetDirection));
 }
 
@@ -1019,12 +1017,12 @@ void steerWithAngle(double steerAngle) {
     }
 }
 
-void steerTo(Vector *point) {
+void steerTo(Vector point) {
     double angle = getSteerAngleTo(point);
     steerWithAngle(angle);
 }
 
-void turnTo(Vector *p) {
+void turnTo(Vector p) {
     double steerAngle = getSteerAngleTo(p);
     int steerSpeed;
     if (isPositionKnown()) {
@@ -1041,7 +1039,7 @@ void turnTo(Vector *p) {
     turn(steerSpeed, steerAngle > 0);
 }
 
-void goTo(Vector *p, bool mayGoFaster) {
+void goTo(Vector p, bool mayGoFaster) {
     double steerAngle = getSteerAngleTo(p);
     double factor = 1;
     double distance = vector_distanceTo(getEstimatedPosition(), p);
@@ -1067,7 +1065,7 @@ void followRoutePoint(Route *r, bool mayGoFaster) {
         stop();
         return;
     }
-    Vector *point = r->points[currentRoutePoint];
+    Vector point = r->points[currentRoutePoint];
     if (vector_distanceTo(getEstimatedPosition(), point) < ROUTE_DISTANCE_THRESHOLD) {
         currentRoutePoint++;
         followRoutePoint(r, mayGoFaster);
@@ -1086,14 +1084,14 @@ void followRoutePoint(Route *r, bool mayGoFaster) {
  *       ##     #######  ##              ######## ##     ##    ##    ######## ##     ##
  */
 
-FlowPoint *calculateNearestFlowPoint(Vector *point) {
+FlowPoint calculateNearestFlowPoint(Vector point) {
     double distance = DBL_MAX;
-    FlowPoint *nearest = NULL;
+    FlowPoint nearest = {};
     Environment *env = getCurrentEnv();
     for (int i = 0; i < env->anchorCount; i++) {
-        FlowLine *flowLine = env->flowLines[i];
-        FlowPoint *current = nearestFlowPoint(flowLine, point);
-        double dst = vector_distanceTo(point, current->point);
+        FlowLine flowLine = env->flowLines[i];
+        FlowPoint current = nearestFlowPoint(flowLine, point);
+        double dst = vector_distanceTo(point, current.point);
         if (distance > dst) {
             distance = dst;
             nearest = current;
@@ -1102,8 +1100,8 @@ FlowPoint *calculateNearestFlowPoint(Vector *point) {
     return nearest;
 }
 
-Vector *influenceByFlowPoint(const Vector *position, const FlowPoint *flowPoint) {
-    Direction *toFlowPoint = vector_directionTo(position, flowPoint->point);
+Vector influenceByFlowPoint(const Vector position, const FlowPoint flowPoint) {
+    Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
     //val force = Math.abs(/*Math.cos(toFlowPoint.difference(flowPoint.direction))*/ 1) / Math.pow(flowPoint.point.distanceTo(position) / 100, 3.0);
 
     /*Direction *flowDirection = toFlowPoint;
@@ -1114,12 +1112,12 @@ Vector *influenceByFlowPoint(const Vector *position, const FlowPoint *flowPoint)
         flowDirection = direction_mirrorWith(direction_invert(flowDirection), flowPoint->direction);
     }*/
 
-    double d = vector_distanceTo(flowPoint->point, position) / flowPoint->radius;
-    double relativeAngle = direction_difference(direction_invert(flowPoint->direction), toFlowPoint);
+    double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
+    double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
     double weight = 1 - pow(2.0, -d * d);
     weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
     //weight = 1;
-    Direction *pullDirection = direction_weightedAverageWith(flowPoint->direction, toFlowPoint, weight);
+    Direction pullDirection = direction_weightedAverageWith(flowPoint.direction, toFlowPoint, weight);
     return vector_radial(pullDirection, 1.0);
 }
 
@@ -1130,39 +1128,39 @@ double forceOfBorder(double distance) {
     return max(0.0, 2 * (exp((-x) / b) - exp((-a) / b)) / (1 - exp((-a) / b)));
 }
 
-double forceOfFlowPoint(FlowPoint *flowPoint, double distance) {
-    double a = flowPoint->radius;
+double forceOfFlowPoint(FlowPoint flowPoint, double distance) {
+    double a = flowPoint.radius;
     double b = COEFF_K;
     double x = distance;
     return max(0.0, 2 * (exp((-x) / b) - exp((-a) / b)) / (1 - exp((-a) / b)));
 }
 
-Vector *influenceByBorders(const Vector *position) {
-    Vector *v = new_vector(0, 0);
-    v = vector_plus(v, vector_radial(new_Direction(0.0), forceOfBorder(position->x))); // left border
-    v = vector_plus(v, vector_radial(new_Direction(M_PI / 2), forceOfBorder(position->y))); // bottom border
-    v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position->x))); // right border
+Vector influenceByBorders(const Vector position) {
+    Vector v = new_vector(0, 0);
+    v = vector_plus(v, vector_radial(new_Direction(0.0), forceOfBorder(position.x))); // left border
+    v = vector_plus(v, vector_radial(new_Direction(M_PI / 2), forceOfBorder(position.y))); // bottom border
+    v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position.x))); // right border
     v = vector_plus(v,
-                    vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
+                    vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position.y))); // top border
     return v;
 }
 
-Vector *influenceRandom(double distanceToNearestFlowPoint) {
+Vector influenceRandom(double distanceToNearestFlowPoint) {
     int offset = randn(RANDOM_VECTOR_STEP_DEVIATION * 2) - RANDOM_VECTOR_STEP_DEVIATION; // offset in degrees
     lastRandomDirection = direction_plus(lastRandomDirection, direction_fromDegrees(offset));
     double randomForce = max(0, -(1 / (distanceToNearestFlowPoint - 1) * 3) + 1);
     return vector_radial(lastRandomDirection, RANDOM_VECTOR_SIZE * randomForce);
 }
 
-Vector *influenceByDiscreteFlowPoint(const Vector *position, FlowPoint *flowPoint) {
-    return vector_radial(flowPoint->direction,
+Vector influenceByDiscreteFlowPoint(const Vector position, FlowPoint flowPoint) {
+    return vector_radial(flowPoint.direction,
                          DISCRETE_FLOWPOINT_FORCE *
-                         forceOfFlowPoint(flowPoint, vector_distanceTo(position, flowPoint->point))
+                         forceOfFlowPoint(flowPoint, vector_distanceTo(position, flowPoint.point))
     );
 }
 
-Vector *influenceByDiscreteFlowPoints(const Vector *position) {
-    Vector *sum = new_vector(0, 0);
+Vector influenceByDiscreteFlowPoints(const Vector position) {
+    Vector sum = new_vector(0, 0);
     Environment *env = getCurrentEnv();
     for (int i = 0; i < env->flowPointCount; i++) {
         sum = vector_plus(sum, influenceByDiscreteFlowPoint(position, env->flowPoints[i]));
@@ -1170,30 +1168,30 @@ Vector *influenceByDiscreteFlowPoints(const Vector *position) {
     return sum;
 }
 
-Vector *calculateMoveVector(Vector *position) {
-    FlowPoint *nearestFlowPoint = calculateNearestFlowPoint(position);
-    Vector *infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
-    Vector *infBorders = influenceByBorders(position);
-    Vector *infRandom = influenceRandom(vector_distanceTo(position, nearestFlowPoint->point));
-    Vector *infDiscretes = influenceByDiscreteFlowPoints(position);
+Vector calculateMoveVector(Vector position) {
+    FlowPoint nearestFlowPoint = calculateNearestFlowPoint(position);
+    Vector infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
+    Vector infBorders = influenceByBorders(position);
+    Vector infRandom = influenceRandom(vector_distanceTo(position, nearestFlowPoint.point));
+    Vector infDiscretes = influenceByDiscreteFlowPoints(position);
     return vector_plus(vector_plus(vector_plus(infFlowPoint, infBorders), infRandom), infDiscretes);
 }
 
-Vector *calculateSuperobjectFlowlineMoveVector(Vector *position) {
-    FlowLine *flowLine = superobjectFlowLine;
-    FlowPoint *flowPoint = nearestFlowPoint(flowLine, position);
-    Direction *toFlowPoint = vector_directionTo(position, flowPoint->point);
+Vector calculateSuperobjectFlowlineMoveVector(Vector position) {
+    FlowLine flowLine = superobjectFlowLine;
+    FlowPoint flowPoint = nearestFlowPoint(flowLine, position);
+    Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
 
-    double d = vector_distanceTo(flowPoint->point, position) / flowPoint->radius;
-    double relativeAngle = direction_difference(direction_invert(flowPoint->direction), toFlowPoint);
+    double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
+    double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
     double weight = 1 - pow(2.0, -d * d);
     weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
-    Direction *pullDirection = direction_weightedAverageWith(flowPoint->direction, toFlowPoint, weight);
+    Direction pullDirection = direction_weightedAverageWith(flowPoint.direction, toFlowPoint, weight);
 
-    double projectionDistance = vector_distanceTo(flowPoint->point, flowLine->pb->point);
-    weight = toRange(projectionDistance / flowLine->pb->radius - 1, 0, 1);
-    Direction *final = direction_weightedAverageWith(vector_directionTo(position, flowLine->pb->point), pullDirection,
-                                                     weight);
+    double projectionDistance = vector_distanceTo(flowPoint.point, flowLine.pb.point);
+    weight = toRange(projectionDistance / flowLine.pb.radius - 1, 0, 1);
+    Direction final = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection,
+                                                    weight);
 
     return vector_radial(final, 1.0);
 }
@@ -1214,7 +1212,6 @@ void init() {
 
         rnd_state_o = *new_rnd_state();
 
-        _init_areas();
         _init_values();
         _init_flowlines();
 
@@ -1226,7 +1223,7 @@ void init() {
 }
 
 int doStates() {
-    Vector *position = getEstimatedPosition();
+    Vector position = getEstimatedPosition();
 
     // Depositing
     if (depositingTime > 0) {
@@ -1260,10 +1257,10 @@ int doStates() {
         return ACTION_OBSTACLE_AVOIDING;
     }
     if (shouldAvoidObstacle()) {
-        avoidingObstacleTime = 6;
-        if (seesObstacleLeft() /*|| isYellowLeft()*/) {
+        avoidingObstacleTime = 7;
+        if (seesObstacleLeft() || isYellowLeft()) {
             move(-3, -1);
-        } else if (seesObstacleRight() /*|| isYellowRight()*/) {
+        } else if (seesObstacleRight() || isYellowRight()) {
             move(-1, -3);
         } else {
             move(-2, -2);
@@ -1297,17 +1294,17 @@ int doStates() {
         if (isOrangeLeft()) {
             move(0, 2); // go to left
         } else {
-            move (2, 0); // go to right
+            move(2, 0); // go to right
         }
         return ACTION_ADJUST_FOR_DEPOSIT;
     }
 
-    if (superobjectFlowLine == NULL) {
+    if (!isFollowingSuperobject) {
         generateSuperobjectRoute();
     }
-    if (superobjectFlowLine != NULL) {
-        Vector *moveVector = calculateSuperobjectFlowlineMoveVector(position);
-        Vector *target = vector_plus(position, moveVector);
+    if (isFollowingSuperobject) {
+        Vector moveVector = calculateSuperobjectFlowlineMoveVector(position);
+        Vector target = vector_plus(position, moveVector);
         steerTo(target);
         return ACTION_FOLLOW_SUPEROBJECT;
     }
@@ -1320,8 +1317,8 @@ int doStates() {
     }
 
     // Follow flow
-    Vector *moveVector = calculateMoveVector(position);
-    Vector *target = vector_plus(position, moveVector);
+    Vector moveVector = calculateMoveVector(position);
+    Vector target = vector_plus(position, moveVector);
     //turnTo(target);
     steerTo(target);
 
