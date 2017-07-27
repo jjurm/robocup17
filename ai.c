@@ -236,6 +236,10 @@ Direction *direction_plus(const Direction *t, const Direction *direction) {
     return new_Direction((*t) + (*direction));
 }
 
+Direction *direction_plus_double(const Direction *t, double val) {
+    return new_Direction((*t) + val);
+}
+
 Direction *direction_minus(const Direction *t, const Direction *direction) {
     return new_Direction((*t) - (*direction));
 }
@@ -277,6 +281,13 @@ FlowPoint *nearestFlowPoint(FlowLine *t, Vector *point) {
     return new_FlowPoint(vector_plus(t->pa->point, vector_multiply(aToB, tx)),
                          tx * t->pb->radius + (1 - tx) * t->pa->radius,
                          vector_direction(aToB));
+}
+
+FlowLine *flowline_move(FlowLine *t, Vector *moveVector) {
+    return new_FlowLine(
+            new_Anchor(vector_plus(t->pa->point, moveVector), t->pa->radius),
+            new_Anchor(vector_plus(t->pb->point, moveVector), t->pb->radius)
+    );
 }
 
 /***
@@ -327,6 +338,7 @@ int AI_SensorNum = 13;
 
 #define ACTION_DEPOSIT 50
 #define ACTION_DEPOSITING 51
+#define ACTION_ADJUST_FOR_DEPOSIT 52
 #define ACTION_COLLECT 20
 #define ACTION_COLLECTING 21
 #define ACTION_OBSTACLE_AVOID 30
@@ -344,6 +356,14 @@ int RANDOM_COORDINATES_PADDING = 30;
 int US_DISTANCE = 3;
 int ROUTE_DISTANCE_THRESHOLD = 8;
 int SUPEROBJECT_FLOWLINE_RADIUS = 4;
+int ROBOT_WIDTH = 15;
+/**
+ * Collect policy = maximum number of collected objects of one color
+ *  0 - all
+ *  1 - space for 1 of each
+ *  2 - space for 2 of each
+ */
+int POLICY_COLLECT = 2;
 
 double BORDER_DISTANCE = 20;
 double COEFF_K = 16;
@@ -355,6 +375,9 @@ double RANDOM_VECTOR_SIZE = 0.4;
 bool initialized = false;
 int ticks = 0;
 
+// Collecting objects
+int loadedColor[] = {0, 0, 0}; // red, black, blue
+
 // Superobjects
 int superobjectCount = 0;
 Vector *superobjects[20];
@@ -364,7 +387,7 @@ int superobjectIndex = NONE;
 
 //========== STATE variables ==========
 int collectingTime = 0;
-bool isLongerCollecting = false;
+bool mustRemainCollecting = true;
 int currentArea = 0;
 int currentCheckpoint = 0;
 int avoidingObstacleTime = 0;
@@ -738,6 +761,21 @@ bool canCollect() {
     return (isRed() || isBlack() || isBlue() || isViolet()) && LoadedObjects < 6;
 }
 
+bool shouldCollect() {
+    int index;
+    if (isRed()) {
+        index = 0;
+    } else if (isBlack()) {
+        index = 1;
+    } else if (isBlue()) {
+        index = 2;
+    } else {
+        // always collect superobject
+        return true;
+    }
+    return loadedColor[index] < POLICY_COLLECT;
+}
+
 bool seesObstacleLeft() {
     return US_Left < US_DISTANCE;
 }
@@ -862,14 +900,22 @@ bool findIntersection(double p0_x, double p0_y, double p1_x, double p1_y,
 }
 
 bool isNotObstructed(Vector *a, Vector *b) {
-    bool intersect;
+    Direction *direction = vector_directionTo(a, b);
+    Vector *moveA = vector_radial(direction_plus_double(direction, M_PI / 2), ROBOT_WIDTH / 2);
+    Vector *moveB = vector_radial(direction_plus_double(direction, -M_PI / 2), ROBOT_WIDTH / 2);
+    Vector *aMovedA = vector_plus(a, moveA);
+    Vector *aMovedB = vector_plus(a, moveB);
+    Vector *bMovedA = vector_plus(b, moveA);
+    Vector *bMovedB = vector_plus(b, moveB);
     for (int i = 0; i < wall_count; i++) {
         Wall *wall = WALLS[i];
-        intersect = findIntersection(
+        if (findIntersection(
                 wall->a->x, wall->a->y, wall->b->x, wall->b->y,
-                a->x, a->y, b->x, b->y
-        );
-        if (intersect) return false;
+                aMovedA->x, aMovedA->y, bMovedA->x, bMovedA->y
+        ) || findIntersection(
+                wall->a->x, wall->a->y, wall->b->x, wall->b->y,
+                aMovedB->x, aMovedB->y, bMovedB->x, bMovedB->y
+        )) return false;
     }
     return true;
 }
@@ -1189,22 +1235,23 @@ int doStates() {
     }
 
     // Collecting
-    if (collectingTime > 0 && (!isLongerCollecting || canCollect())) {
+    if (collectingTime > 0 && (mustRemainCollecting || canCollect())) {
         collectingTime--;
-        if (collectingTime < 10) isLongerCollecting = true;
+        if (collectingTime < 10 && canCollect()) mustRemainCollecting = false;
         return ACTION_COLLECTING;
     }
     if (canCollect()) {
-        forward(0);
         collectingTime = 38;
+        mustRemainCollecting = true;
         LoadedObjects++;
         if (isViolet()) {
             stopFollowingSuperobject();
         }
+        stop();
         return ACTION_COLLECT;
     }
 
-    isLongerCollecting = false;
+    mustRemainCollecting = false;
     collectingTime = 0;
 
     // Avoid obstacle
@@ -1239,11 +1286,20 @@ int doStates() {
     }*/
 
     // Deposit
-    if (canDeposit() && shouldDeposit()) {
+    if (shouldDeposit() && canDeposit()) {
         depositingTime = DEPOSITING_TIME;
         LoadedObjects = 0;
-        forward(0);
+        stop();
         return ACTION_DEPOSIT;
+    }
+
+    if (shouldDeposit() && (isOrangeLeft() || isOrangeRight())) {
+        if (isOrangeLeft()) {
+            move(0, 2); // go to left
+        } else {
+            move (2, 0); // go to right
+        }
+        return ACTION_ADJUST_FOR_DEPOSIT;
     }
 
     if (superobjectFlowLine == NULL) {
