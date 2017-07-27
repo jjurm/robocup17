@@ -143,6 +143,18 @@ typedef struct {
     Vector *points[50];
 } Route;
 
+typedef struct {
+    Vector a;
+    Vector b;
+} Wall;
+
+Wall *new_Wall(Vector a, Vector b){
+    Wall *o = malloc(sizeof(Wall));
+    o->a = a;
+    o->b = b;
+    return o;
+};
+
 
 //========== VECTOR ==========
 
@@ -447,6 +459,16 @@ void _routePoint(int route, int x, int y) {
     Route *r = &ROUTES[route];
     r->points[r->count++] = new_vector(x, y);
 }
+
+// =============WALLS=============
+#define WALLS_COUNT 1
+Wall WALLS[WALLS_COUNT];
+
+int wall_count=0;
+
+Wall _wall(ax, ay, bx, by){
+    WALLS[wall_count++]=new_Wall(new_vector(ax,ay), new_vector(bx,by));
+};
 
 void _init_values() {
     //####################VALUES####################
