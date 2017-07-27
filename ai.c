@@ -20,6 +20,9 @@
 #ifndef CSBOT_REAL
 
 #include <windows.h>
+
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
@@ -27,10 +30,13 @@
 #include <float.h>
 
 #define DLL_EXPORT extern __declspec(dllexport)
+
 #define false 0
 #define true 1
-
-#endif
+#define NONE (-1)
+#define E_A 0
+#define E_B 1
+#define E_C 3
 
 #define CsBot_AI_C //DO NOT delete this line
 
@@ -123,6 +129,20 @@ FlowLine *new_FlowLine(Anchor *pa, Anchor *pb) {
     return o;
 }
 
+typedef struct {
+    double randomnessSize;
+    int anchorCount;
+    Anchor *anchors[50];
+    FlowLine *flowLines[50];
+    int flowPointCount;
+    FlowPoint *flowPoints[10];
+} Environment;
+
+typedef struct {
+    int count;
+    Vector *points[50];
+} Route;
+
 //========== VECTOR ==========
 
 Vector *vector_radial(const Direction *direction, double size) {
@@ -140,8 +160,9 @@ Vector *vector_vectorTo(const Vector *A, const Vector *B) {
     return new_vector(B->x - A->x, B->y - A->y);
 }
 
-double vector_distanceTo(Vector *A, const Vector *B) {
-    return vector_size(vector_vectorTo(A, B));
+double vector_distanceTo(const Vector *A, const Vector *B) {
+    return
+            vector_size(vector_vectorTo(A, B));
 }
 
 Direction *vector_direction(Vector *A) {
@@ -149,7 +170,8 @@ Direction *vector_direction(Vector *A) {
 }
 
 Direction *vector_directionTo(const Vector *A, Vector *B) {
-    return vector_direction(vector_vectorTo(A, B));
+    return
+            vector_direction(vector_vectorTo(A, B));
 }
 
 Vector *vector_plus(Vector *A, Vector *B) {
@@ -160,8 +182,14 @@ Vector *vector_minus(Vector *A, Vector *B) {
     return new_vector(A->x - B->x, A->y - B->y);
 }
 
-Vector *vector_multiply(Vector *A, double k) {
-    return new_vector(A->x * k, A->y * k);
+Vector *vector_multiply(Vector *A,
+                        double k
+) {
+    return new_vector(A->
+                              x * k,
+                      A->
+                              y * k
+    );
 }
 
 Vector *vector_invert(Vector *A) {
@@ -292,17 +320,29 @@ int AI_SensorNum = 13;
 #define MAP_WIDTH 350
 #define MAP_HEIGHT 260
 
+#define ACTION_DEPOSIT 50
+#define ACTION_DEPOSITING 51
+#define ACTION_COLLECT 20
+#define ACTION_COLLECTING 21
+#define ACTION_OBSTACLE_AVOID 30
+#define ACTION_OBSTACLE_AVOIDING 31
+#define ACTION_FOLLOW_ROUTE 41
+#define ACTION_NORMAL 1
+
 int MIN_DEP_LOADED_OBJECTS = 4;
 int STD_SPEED = 2;
-double STD_ANGLE_TOLERANCE = 4 * M_PI / 180;
+double STD_ANGLE_TOLERANCE = 8 * M_PI / 180;
 int AVOIDING_BORDER_TIME = 20;
 int DEPOSITING_TIME = 40;
 int RANDOM_COORDINATES_PADDING = 30;
-int US_DISTANCE = 6;
-double BORDER_DISTANCE = 30;
-double BORDER_COEFF_K = 20;
+int US_DISTANCE = 3;
+int ROUTE_DISTANCE_THRESHOLD = 8;
+
+double BORDER_DISTANCE = 20;
+double COEFF_K = 16;
+double DISCRETE_FLOWPOINT_FORCE = 2.0;
 int RANDOM_VECTOR_STEP_DEVIATION = 20; // degrees
-double RANDOM_VECTOR_SIZE = 0.65;
+double RANDOM_VECTOR_SIZE = 0.4;
 
 //========== PROGRAM variables ==========
 bool initialized = false;
@@ -317,9 +357,14 @@ int avoidingObstacleTime = 0;
 int avoidingBorderTime = 0;
 Vector *avoidingBorderPos;
 int depositingTime = 0;
+int currentEnvironment = 0;
+int currentRoute = 0;
+int currentRoutePoint = 0;
 
 Vector *lastPosition;
 Direction *lastDirection;
+Vector *estimatedPosition;
+Direction *estimatedDirection;
 int motorLeft;
 int motorRight;
 Direction *lastRandomDirection;
@@ -328,6 +373,7 @@ Direction *lastRandomDirection;
 int lastState = 0;
 int debug1 = -777;
 int debug2 = -777;
+int currentTech = 1;
 
 /***
  *    ########  ########  ######## ########  ######## ######## #### ##    ## ######## ########
@@ -352,36 +398,104 @@ void _area(int x1, int y1, int x2, int y2) {
 void _init_areas() {
     //#################### AREA ####################
     _area(1, 2, 3, 4);
-
 }
 
-#define ANCHORS_COUNT 7
-Anchor *ANCHORS[ANCHORS_COUNT];
-int _index_anchor = 0;
+// ========== ENVIRONMENTS ==========
+#define ENVIRONMENT_COUNT 1
+Environment ENVIRONMENTS[] = {
+        { // STANDARD
+                0.6, // randomness
+                0, {}, {}, 0, {}
+        }
+};
 
-void _anchor(int x, int y, int radius) {
-    ANCHORS[_index_anchor++] = new_Anchor(new_vector(x, y), radius);
+Environment *getCurrentEnv() {
+    if (currentEnvironment == NONE) return NULL;
+    return &ENVIRONMENTS[currentEnvironment];
 }
 
-void _init_anchors() {
-    //####################ANCHOR ####################
-    _anchor(102, 44, 20);
-    _anchor(93, 58, 20);
-    _anchor(110, 190, 20);
-    _anchor(155, 210, 20);
-    _anchor(175, 195, 20);
-    _anchor(205, 113, 20);
-    _anchor(160, 40, 20);
+void _anchor(int env, int x, int y, int radius) {
+    Environment *e = &ENVIRONMENTS[env];
+    e->anchors[e->anchorCount++] = new_Anchor(new_vector(x, y), radius);
 }
 
-FlowLine *FLOWLINES[ANCHORS_COUNT];
+void _flowPoint(int env, int x, int y, int radius, int direction) {
+    Environment *e = &ENVIRONMENTS[env];
+    e->flowPoints[e->flowPointCount++] = new_FlowPoint(new_vector(x, y), radius, direction_fromDegrees(direction));
+}
 
 void _init_flowlines() {
-    for (int i = 0; i < ANCHORS_COUNT; i++) {
-        Anchor *aa = ANCHORS[i];
-        Anchor *ab = ANCHORS[(i + 1) % ANCHORS_COUNT];
-        FLOWLINES[i] = new_FlowLine(aa, ab);
+    for (int ei = 0; ei < ENVIRONMENT_COUNT; ei++) {
+        Environment *e = &ENVIRONMENTS[ei];
+        for (int i = 0; i < e->anchorCount; i++) {
+            Anchor *aa = e->anchors[i];
+            Anchor *ab = e->anchors[(i + 1) % e->anchorCount];
+            e->flowLines[i] = new_FlowLine(aa, ab);
+        }
     }
+}
+
+// ========== ROUTES ==========
+
+#define ROUTES_COUNT 1 // routes: put number of routes here
+Route ROUTES[ROUTES_COUNT];
+
+Route *getCurrentRoute() {
+    if (currentRoute == NONE) return NULL;
+    return &ROUTES[currentRoute];
+}
+
+/*Vector *getCurrentFollowingPoint() {
+    Route *r = getCurrentRoute();
+    if (r == NULL || currentRoutePoint == NONE) {
+        return NULL;
+    }
+    return r->points[currentRoutePoint];
+}*/
+
+void _routePoint(int route, int x, int y) {
+    Route *r = &ROUTES[route];
+    r->points[r->count++] = new_vector(x, y);
+}
+
+void _init_values() {
+    //####################VALUES####################
+    _anchor(E_A, 88, 58, 20);
+    _anchor(E_A, 102, 145, 10);
+    _anchor(E_A, 90, 200, 35);
+    _anchor(E_A, 197, 244, 4);
+    _anchor(E_A, 280, 242, 4);
+    _anchor(E_A, 292, 134, 20);
+    _anchor(E_A, 337, 90, 4);
+    _anchor(E_A, 337, 24, 4);
+    _anchor(E_A, 190, 26, 20);
+
+    _flowPoint(E_A, 10, 165, 60, 80);
+
+    // routes: put the list of points here
+    int r = 6;
+    int r2 = 5;
+    _routePoint(0,18,72+r);//1
+    _routePoint(0,74+r,70);
+    _routePoint(0,72,106+r);
+    _routePoint(0,106+r,102);
+    _routePoint(0,110,70-r);
+    _routePoint(0,164+r,71);
+    _routePoint(0,159,135+r);
+    _routePoint(0,100-r,135);
+    _routePoint(0,100,165+r);
+    _routePoint(0,193+r,165);//10
+    _routePoint(0,188,194+r);
+    _routePoint(0,71-r,193);
+    _routePoint(0,41-r2,246+r2);
+    _routePoint(0,247+r,246);//after 14
+    _routePoint(0,249,71-r);//16
+    _routePoint(0,162-r2,16);
+    _routePoint(0,235+r,45);//before 18
+    _routePoint(0,281+r,16-r2);//18
+    _routePoint(0,338+r2,102+r);
+    _routePoint(0,307,170+r);//before END
+    _routePoint(0,339,247+r);
 }
 
 /***
@@ -658,11 +772,13 @@ Direction *getCurrentDirection() {
 }
 
 Vector *getEstimatedPosition() {
-    return lastPosition;
+    //return lastPosition;
+    return estimatedPosition;
 }
 
 Direction *getEstimatedDirection() {
-    return lastDirection;
+    //return lastDirection;
+    return estimatedDirection;
 }
 
 bool isPositionKnown() {
@@ -672,15 +788,13 @@ bool isPositionKnown() {
 
 void observePosition() {
     if (isPositionKnown()) {
-        lastPosition = getCurrentPosition();
-        lastDirection = getCurrentDirection();
+        lastPosition = estimatedPosition = getCurrentPosition();
+        lastDirection = estimatedDirection = getCurrentDirection();
     } else {
-        /*double forward = (WheelLeft + WheelRight) / 2;
-        lastPosition = vector_plus(lastPosition, vector_radial(lastDirection, 0.6 * forward));
+        double forward = (WheelLeft + WheelRight) / 2;
+        estimatedPosition = vector_plus(estimatedPosition, vector_radial(estimatedDirection, 0.6 * forward));
         double rotation = abs(WheelLeft - WheelRight) / 2;
-        lastDirection = direction_plus(lastDirection, new_Direction(rotation * 4.48));*/
-
-        // stick to the last position
+        estimatedDirection = direction_plus(estimatedDirection, new_Direction(rotation * 4.48));
     }
 }
 
@@ -693,6 +807,10 @@ void move(int left, int right) {
 
 void forward(int speed) {
     move(speed, speed);
+}
+
+void stop() {
+    forward(0);
 }
 
 void turn(int speed, bool toLeft) {
@@ -740,9 +858,9 @@ void steerTo(Vector *point) {
 void turnTo(Vector *p) {
     double steerAngle = getSteerAngleTo(p);
     int steerSpeed;
-    if (steerAngle < 30) {
+    if (steerAngle < 40) {
         steerSpeed = 1;
-    } else if (steerAngle < 60) {
+    } else if (steerAngle < 70) {
         steerSpeed = 2;
     } else {
         steerSpeed = 4;
@@ -750,12 +868,36 @@ void turnTo(Vector *p) {
     turn(steerSpeed, steerAngle > 0);
 }
 
-void goTo(Vector *p) {
+void goTo(Vector *p, bool mayGoFaster) {
     double steerAngle = getSteerAngleTo(p);
     if (abs_double(steerAngle) > STD_ANGLE_TOLERANCE) {
         turnTo(p);
     } else {
+        int speed = STD_SPEED;
+        if (mayGoFaster) {
+            double distance = vector_distanceTo(getEstimatedPosition(), p);
+            if (distance > 40) {
+                speed += 1;
+            }
+            if (distance > 70) {
+                speed += 1;
+            }
+        }
         forward(STD_SPEED);
+    }
+}
+
+void followRoutePoint(Route *r, bool mayGoFaster) {
+    if (currentRoutePoint >= r->count) {
+        stop();
+        return;
+    }
+    Vector *point = r->points[currentRoutePoint];
+    if (vector_distanceTo(getEstimatedPosition(), point) < ROUTE_DISTANCE_THRESHOLD) {
+        currentRoutePoint++;
+        followRoutePoint(r, mayGoFaster);
+    } else {
+        goTo(point, mayGoFaster);
     }
 }
 
@@ -772,8 +914,9 @@ void goTo(Vector *p) {
 FlowPoint *calculateNearestFlowPoint(Vector *point) {
     double distance = DBL_MAX;
     FlowPoint *nearest = NULL;
-    for (int i = 0; i < ANCHORS_COUNT; i++) {
-        FlowLine *flowLine = FLOWLINES[i];
+    Environment *env = getCurrentEnv();
+    for (int i = 0; i < env->anchorCount; i++) {
+        FlowLine *flowLine = env->flowLines[i];
         FlowPoint *current = nearestFlowPoint(flowLine, point);
         double dst = vector_distanceTo(point, current->point);
         if (distance > dst) {
@@ -807,7 +950,14 @@ Vector *influenceByFlowPoint(const Vector *position, const FlowPoint *flowPoint)
 
 double forceOfBorder(double distance) {
     double a = BORDER_DISTANCE;
-    double b = BORDER_COEFF_K;
+    double b = COEFF_K;
+    double x = distance;
+    return max(0.0, 2 * (exp((-x) / b) - exp((-a) / b)) / (1 - exp((-a) / b)));
+}
+
+double forceOfFlowPoint(FlowPoint *flowPoint, double distance) {
+    double a = flowPoint->radius;
+    double b = COEFF_K;
     double x = distance;
     return max(0.0, 2 * (exp((-x) / b) - exp((-a) / b)) / (1 - exp((-a) / b)));
 }
@@ -821,18 +971,36 @@ Vector *influenceByBorders(const Vector *position) {
                     vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
 }
 
-Vector *influenceRandom() {
+Vector *influenceRandom(double distanceToNearestFlowPoint) {
     int offset = randn(RANDOM_VECTOR_STEP_DEVIATION * 2) - RANDOM_VECTOR_STEP_DEVIATION; // offset in degrees
     lastRandomDirection = direction_plus(lastRandomDirection, direction_fromDegrees(offset));
-    return vector_radial(lastRandomDirection, RANDOM_VECTOR_SIZE);
+    double randomForce = max(0, -(1 / (distanceToNearestFlowPoint - 1) * 3) + 1);
+    return vector_radial(lastRandomDirection, RANDOM_VECTOR_SIZE * randomForce);
+}
+
+Vector *influenceByDiscreteFlowPoint(const Vector *position, FlowPoint *flowPoint) {
+    return vector_radial(flowPoint->direction,
+                         DISCRETE_FLOWPOINT_FORCE *
+                         forceOfFlowPoint(flowPoint, vector_distanceTo(position, flowPoint->point))
+    );
+}
+
+Vector *influenceByDiscreteFlowPoints(const Vector *position) {
+    Vector *sum = new_vector(0, 0);
+    Environment *env = getCurrentEnv();
+    for (int i = 0; i < env->flowPointCount; i++) {
+        sum = vector_plus(sum, influenceByDiscreteFlowPoint(position, env->flowPoints[i]));
+    }
+    return sum;
 }
 
 Vector *calculateMoveVector(Vector *position) {
     FlowPoint *nearestFlowPoint = calculateNearestFlowPoint(position);
     Vector *infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
     Vector *infBorders = influenceByBorders(position);
-    Vector *infRandom = influenceRandom();
-    return vector_plus(vector_plus(infFlowPoint, infBorders), infRandom);
+    Vector *infRandom = influenceRandom(vector_distanceTo(position, nearestFlowPoint->point));
+    Vector *infDiscretes = influenceByDiscreteFlowPoints(position);
+    return vector_plus(vector_plus(vector_plus(infFlowPoint, infBorders), infRandom), infDiscretes);
 }
 
 /***
@@ -852,10 +1020,13 @@ void init() {
         rnd_state_o = *new_rnd_state();
 
         _init_areas();
-        _init_anchors();
+        _init_values();
         _init_flowlines();
 
         lastRandomDirection = new_Direction(0);
+
+        lastPosition = estimatedPosition = getCurrentPosition();
+        lastDirection = estimatedDirection = getCurrentDirection();
     }
 }
 
@@ -864,21 +1035,21 @@ int doStates() {
     // Depositing
     if (depositingTime > 0) {
         depositingTime--;
-        return 51;
+        return ACTION_DEPOSITING;
     }
 
     // Collecting
     if (collectingTime > 0 && (!isLongerCollecting || canCollect())) {
         collectingTime--;
         if (collectingTime < 10) isLongerCollecting = true;
-        return 21;
+        return ACTION_COLLECTING;
     }
-    if (canCollect()) {
+    /*if (canCollect()) {
         forward(0);
         collectingTime = 38;
         LoadedObjects++;
-        return 20;
-    }
+        return ACTION_COLLECT;
+    }*/
 
     isLongerCollecting = false;
     collectingTime = 0;
@@ -886,18 +1057,18 @@ int doStates() {
     // Avoid obstacle
     if (avoidingObstacleTime > 0) {
         avoidingObstacleTime--;
-        return 31;
+        return ACTION_OBSTACLE_AVOIDING;
     }
     if (shouldAvoidObstacle()) {
-        avoidingObstacleTime = 10;
-        if (seesObstacleLeft() || isYellowLeft()) {
-            move(-1, -3);
-        } else if (seesObstacleRight() || isYellowRight()) {
+        avoidingObstacleTime = 6;
+        if (seesObstacleLeft() /*|| isYellowLeft()*/) {
             move(-3, -1);
+        } else if (seesObstacleRight() /*|| isYellowRight()*/) {
+            move(-1, -3);
         } else {
             move(-2, -2);
         }
-        return 30;
+        return ACTION_OBSTACLE_AVOID;
     }
 
     // Avoid border
@@ -915,10 +1086,18 @@ int doStates() {
     }*/
 
     // Deposit
-    if (canDeposit() && shouldDeposit()) {
+    /*if (canDeposit() && shouldDeposit()) {
         depositingTime = DEPOSITING_TIME;
         LoadedObjects = 0;
-        return 50;
+        forward(0);
+        return ACTION_DEPOSIT;
+    }*/
+
+    // Follow route
+    Route *route = getCurrentRoute();
+    if (route != NULL) {
+        followRoutePoint(route, true);
+        return ACTION_FOLLOW_ROUTE;
     }
 
     // Follow flow
@@ -928,7 +1107,21 @@ int doStates() {
     //turnTo(target);
     steerTo(target);
 
-    return 1;
+    return ACTION_NORMAL;
+}
+
+void followTech() {
+    int j = currentTech;
+    int DST_WALL = 7;
+    if (j == 1) {
+        if (US_Front > DST_WALL) {
+
+            return;
+        } else {
+
+            currentTech++;
+        }
+    }
 }
 
 void Game0() {}
@@ -991,8 +1184,8 @@ char info[1024];
 
 DLL_EXPORT char *GetDebugInfo() {
     sprintf(info,
-            "debug1=%d;debug2=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
-            debug1, debug2, Duration, SuperDuration, bGameEnd, CurAction, CurGame, SuperObj_Num, SuperObj_X, SuperObj_Y,
+            "debug1=%d;debug2=%d;action=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
+            debug1, debug2, lastState, Duration, SuperDuration, bGameEnd, CurAction, CurGame, SuperObj_Num, SuperObj_X, SuperObj_Y,
             Teleport,
             LoadedObjects, US_Front, US_Left, US_Right, CSLeft_R, CSLeft_G, CSLeft_B, CSRight_R, CSRight_G,
             CSRight_B,
