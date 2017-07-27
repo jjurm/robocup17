@@ -148,7 +148,7 @@ typedef struct {
     Vector *b;
 } Wall;
 
-Wall *new_Wall(Vector *a, Vector *b){
+Wall *new_Wall(Vector *a, Vector *b) {
     Wall *o = malloc(sizeof(Wall));
     o->a = a;
     o->b = b;
@@ -332,16 +332,18 @@ int AI_SensorNum = 13;
 #define ACTION_OBSTACLE_AVOID 30
 #define ACTION_OBSTACLE_AVOIDING 31
 #define ACTION_FOLLOW_ROUTE 41
+#define ACTION_FOLLOW_SUPEROBJECT 61
 #define ACTION_NORMAL 1
 
 int MIN_DEP_LOADED_OBJECTS = 4;
 int STD_SPEED = 2;
 double STD_ANGLE_TOLERANCE = 8 * M_PI / 180;
 int AVOIDING_BORDER_TIME = 20;
-int DEPOSITING_TIME = 40;
+int DEPOSITING_TIME = 44;
 int RANDOM_COORDINATES_PADDING = 30;
 int US_DISTANCE = 3;
 int ROUTE_DISTANCE_THRESHOLD = 8;
+int SUPEROBJECT_FLOWLINE_RADIUS = 4;
 
 double BORDER_DISTANCE = 20;
 double COEFF_K = 16;
@@ -356,7 +358,9 @@ int ticks = 0;
 // Superobjects
 int superobjectCount = 0;
 Vector *superobjects[20];
-Vector *lastSuperobjectRegistered;
+Vector *lastSuperobjectRegistered = NULL;
+FlowLine *superobjectFlowLine = NULL;
+int superobjectIndex = NONE;
 
 //========== STATE variables ==========
 int collectingTime = 0;
@@ -368,8 +372,8 @@ int avoidingBorderTime = 0;
 Vector *avoidingBorderPos;
 int depositingTime = 0;
 int currentEnvironment = 0;
-int currentRoute = 0;
-int currentRoutePoint = 0;
+int currentRoute = NONE;
+int currentRoutePoint = NONE;
 
 // moving and position
 Vector *lastPosition;
@@ -464,10 +468,10 @@ void _routePoint(int route, int x, int y) {
 #define WALLS_COUNT 1
 Wall *WALLS[WALLS_COUNT];
 
-int wall_count=0;
+int wall_count = 0;
 
-Wall _wall(int ax, int ay, int bx, int by){
-    WALLS[wall_count++]=new_Wall(new_vector(ax,ay), new_vector(bx,by));
+Wall _wall(int ax, int ay, int bx, int by) {
+    WALLS[wall_count++] = new_Wall(new_vector(ax, ay), new_vector(bx, by));
 };
 
 void _init_values() {
@@ -563,6 +567,10 @@ int angleTo(Vector *p) {
 }
 
 double toRange(double value, double min, double max) {
+    return min(max(min, value), max);
+}
+
+int toRangeInt(int value, int min, int max) {
     return min(max(min, value), max);
 }
 
@@ -703,6 +711,17 @@ bool isBlueLeft() {
 
 bool isBlue() { return (isBlueLeft() || isBlueRight()); }
 
+bool isVioletRight() {
+    return (((CSRight_R > 232 - 10) && (CSRight_R < 255 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 41 + 10)) &&
+            ((CSRight_B > 255 - 10) && (CSRight_B < 255 + 10)));
+}
+
+bool isVioletLeft() {
+    return (((CSLeft_R > 232 - 10) && (CSLeft_R < 255 + 10)) && ((CSLeft_G > 30 - 10) && (CSLeft_G < 41 + 10)) &&
+            ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
+}
+
+bool isViolet() { return (isVioletLeft() || isVioletRight()); }
 
 // =========== AREAS ==========
 
@@ -716,7 +735,7 @@ Vector *randomCoordinates(int arean) {
 // =========== CHECKS ==========
 
 bool canCollect() {
-    return (isRed() || isBlack() || isBlue()) && LoadedObjects < 6;
+    return (isRed() || isBlack() || isBlue() || isViolet()) && LoadedObjects < 6;
 }
 
 bool seesObstacleLeft() {
@@ -749,7 +768,7 @@ bool shouldDeposit() {
 }
 
 bool canDeposit() {
-    return isOrange();
+    return isOrangeLeft() && isOrangeRight();
 }
 
 // ========== POSITION ===========
@@ -779,6 +798,7 @@ bool isPositionKnown() {
 
 void observePosition() {
     if (isPositionKnown()) {
+        free(lastPosition);
         lastPosition = estimatedPosition = getCurrentPosition();
         lastDirection = estimatedDirection = getCurrentDirection();
     } else {
@@ -804,8 +824,11 @@ int estDir() {
 // ========== SUPEROBJECTS ==========
 
 void registerSuperobject() {
-    if (SuperObj_Num == 1 && SuperObj_X != lastSuperobjectRegistered->x && SuperObj_Y != lastSuperobjectRegistered->y) {
-        Vector *superobject = new_vector(SuperObj_X, SuperObj_Y);
+    if (SuperObj_Num == 1 && (
+            lastSuperobjectRegistered == NULL ||
+            (SuperObj_X != lastSuperobjectRegistered->x && SuperObj_Y != lastSuperobjectRegistered->y)
+    )) {
+        Vector *superobject = new_vector(SuperObj_X + 10, SuperObj_Y);
         lastSuperobjectRegistered = superobject;
         superobjects[superobjectCount++] = superobject;
     }
@@ -814,17 +837,82 @@ void registerSuperobject() {
 void unregisterSuperobject(int index) {
     superobjects[index] = NULL;
     // if it's not the last, move the last to the 'index' position
-    if (index != superobjectCount-1) {
-        superobjects[index] = superobjects[superobjectCount-1];
+    if (index != superobjectCount - 1) {
+        superobjects[index] = superobjects[superobjectCount - 1];
     }
     superobjectCount--;
+}
+
+bool findIntersection(double p0_x, double p0_y, double p1_x, double p1_y,
+                      double p2_x, double p2_y, double p3_x, double p3_y) {
+    double s1_x, s1_y, s2_x, s2_y;
+    s1_x = p1_x - p0_x;
+    s1_y = p1_y - p0_y;
+    s2_x = p3_x - p2_x;
+    s2_y = p3_y - p2_y;
+
+    double s, t;
+    s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+    t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+    if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
+        return true;
+    }
+    return 0; // No collision
+}
+
+bool isNotObstructed(Vector *a, Vector *b) {
+    bool intersect;
+    for (int i = 0; i < wall_count; i++) {
+        Wall *wall = WALLS[i];
+        intersect = findIntersection(
+                wall->a->x, wall->a->y, wall->b->x, wall->b->y,
+                a->x, a->y, b->x, b->y
+        );
+        if (intersect) return false;
+    }
+    return true;
+}
+
+void generateSuperobjectRoute() {
+    Vector *position = getEstimatedPosition();
+    Vector *bestSuperobject = NULL;
+    int bestSuperobjectIndex = NONE;
+    double bestDistance = 0, distance;
+    for (int index = 0; index < superobjectCount; index++) {
+        Vector *superobject = superobjects[index];
+        if (vector_distanceTo(position, superobject) < 141 && isNotObstructed(position, superobject)) {
+            distance = vector_distanceTo(position, superobject);
+            if (bestSuperobject == NULL || distance < bestDistance) {
+                bestDistance = distance;
+                bestSuperobject = superobject;
+                bestSuperobjectIndex = index;
+            }
+        }
+    }
+    if (bestSuperobject != NULL) {
+        superobjectFlowLine = new_FlowLine(
+                new_Anchor(position, SUPEROBJECT_FLOWLINE_RADIUS),
+                new_Anchor(bestSuperobject, SUPEROBJECT_FLOWLINE_RADIUS)
+        );
+        superobjectIndex = bestSuperobjectIndex;
+    } else {
+        superobjectFlowLine = NULL;
+        superobjectIndex = NONE;
+    }
+};
+
+void stopFollowingSuperobject() {
+    unregisterSuperobject(superobjectIndex);
+    superobjectFlowLine = NULL;
+    superobjectIndex = NONE;
 }
 
 // ========== ACTIONS =============
 
 void move(int left, int right) {
-    WheelLeft = left;
-    WheelRight = right;
+    WheelLeft = toRangeInt(left, -5, 5);
+    WheelRight = toRangeInt(right, -5, 5);
 }
 
 void forward(int speed) {
@@ -869,12 +957,18 @@ double getAngleTolerance() {
 }
 
 void steerWithAngle(double steerAngle) {
+    int speed;
+    if (isGrey()) {
+        speed = 5;
+    } else {
+        speed = STD_SPEED;
+    }
     if (abs_double(steerAngle) < getAngleTolerance()) {
-        forward(STD_SPEED);
+        forward(speed);
     } else {
         double k = toDegrees(abs_double(steerAngle)) / 40;
-        double motorA = STD_SPEED + k;
-        double motorB = STD_SPEED - k;
+        double motorA = speed + k;
+        double motorB = speed - k;
         steer((int) ceil(motorA), (int) ceil(motorB), steerAngle >= 0);
     }
 }
@@ -898,8 +992,7 @@ void turnTo(Vector *p) {
     } else {
         steerSpeed = 1;
     }
-    turn(steerSpeed, steerAngle
-                     > 0);
+    turn(steerSpeed, steerAngle > 0);
 }
 
 void goTo(Vector *p, bool mayGoFaster) {
@@ -1040,6 +1133,25 @@ Vector *calculateMoveVector(Vector *position) {
     return vector_plus(vector_plus(vector_plus(infFlowPoint, infBorders), infRandom), infDiscretes);
 }
 
+Vector *calculateSuperobjectFlowlineMoveVector(Vector *position) {
+    FlowLine *flowLine = superobjectFlowLine;
+    FlowPoint *flowPoint = nearestFlowPoint(flowLine, position);
+    Direction *toFlowPoint = vector_directionTo(position, flowPoint->point);
+
+    double d = vector_distanceTo(flowPoint->point, position) / flowPoint->radius;
+    double relativeAngle = direction_difference(direction_invert(flowPoint->direction), toFlowPoint);
+    double weight = 1 - pow(2.0, -d * d);
+    weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
+    Direction *pullDirection = direction_weightedAverageWith(flowPoint->direction, toFlowPoint, weight);
+
+    double projectionDistance = vector_distanceTo(flowPoint->point, flowLine->pb->point);
+    weight = toRange(projectionDistance / flowLine->pb->radius - 1, 0, 1);
+    Direction *final = direction_weightedAverageWith(vector_directionTo(position, flowLine->pb->point), pullDirection,
+                                                     weight);
+
+    return vector_radial(final, 1.0);
+}
+
 /***
  *    ########  ########   #######   ######   ########     ###    ##     ##
  *    ##     ## ##     ## ##     ## ##    ##  ##     ##   ## ##   ###   ###
@@ -1068,6 +1180,7 @@ void init() {
 }
 
 int doStates() {
+    Vector *position = getEstimatedPosition();
 
     // Depositing
     if (depositingTime > 0) {
@@ -1085,6 +1198,9 @@ int doStates() {
         forward(0);
         collectingTime = 38;
         LoadedObjects++;
+        if (isViolet()) {
+            stopFollowingSuperobject();
+        }
         return ACTION_COLLECT;
     }
 
@@ -1130,6 +1246,16 @@ int doStates() {
         return ACTION_DEPOSIT;
     }
 
+    if (superobjectFlowLine == NULL) {
+        generateSuperobjectRoute();
+    }
+    if (superobjectFlowLine != NULL) {
+        Vector *moveVector = calculateSuperobjectFlowlineMoveVector(position);
+        Vector *target = vector_plus(position, moveVector);
+        steerTo(target);
+        return ACTION_FOLLOW_SUPEROBJECT;
+    }
+
     // Follow route
     Route *route = getCurrentRoute();
     if (route != NULL) {
@@ -1138,7 +1264,6 @@ int doStates() {
     }
 
     // Follow flow
-    Vector *position = getEstimatedPosition();
     Vector *moveVector = calculateMoveVector(position);
     Vector *target = vector_plus(position, moveVector);
     //turnTo(target);
