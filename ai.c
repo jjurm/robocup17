@@ -143,6 +143,7 @@ typedef struct {
     Vector *points[50];
 } Route;
 
+
 //========== VECTOR ==========
 
 Vector *vector_radial(const Direction *direction, double size) {
@@ -161,8 +162,7 @@ Vector *vector_vectorTo(const Vector *A, const Vector *B) {
 }
 
 double vector_distanceTo(const Vector *A, const Vector *B) {
-    return
-            vector_size(vector_vectorTo(A, B));
+    return vector_size(vector_vectorTo(A, B));
 }
 
 Direction *vector_direction(Vector *A) {
@@ -170,8 +170,7 @@ Direction *vector_direction(Vector *A) {
 }
 
 Direction *vector_directionTo(const Vector *A, Vector *B) {
-    return
-            vector_direction(vector_vectorTo(A, B));
+    return vector_direction(vector_vectorTo(A, B));
 }
 
 Vector *vector_plus(Vector *A, Vector *B) {
@@ -182,14 +181,8 @@ Vector *vector_minus(Vector *A, Vector *B) {
     return new_vector(A->x - B->x, A->y - B->y);
 }
 
-Vector *vector_multiply(Vector *A,
-                        double k
-) {
-    return new_vector(A->
-                              x * k,
-                      A->
-                              y * k
-    );
+Vector *vector_multiply(Vector *A, double k) {
+    return new_vector(A->x * k, A->y * k);
 }
 
 Vector *vector_invert(Vector *A) {
@@ -348,6 +341,11 @@ double RANDOM_VECTOR_SIZE = 0.4;
 bool initialized = false;
 int ticks = 0;
 
+// Superobjects
+int superobjectCount = 0;
+Vector *superobjects[20];
+Vector *lastSuperobjectRegistered;
+
 //========== STATE variables ==========
 int collectingTime = 0;
 bool isLongerCollecting = false;
@@ -361,6 +359,7 @@ int currentEnvironment = 0;
 int currentRoute = 0;
 int currentRoutePoint = 0;
 
+// moving and position
 Vector *lastPosition;
 Direction *lastDirection;
 Vector *estimatedPosition;
@@ -373,7 +372,6 @@ Direction *lastRandomDirection;
 int lastState = 0;
 int debug1 = -777;
 int debug2 = -777;
-int currentTech = 1;
 
 /***
  *    ########  ########  ######## ########  ######## ######## #### ##    ## ######## ########
@@ -444,14 +442,6 @@ Route *getCurrentRoute() {
     if (currentRoute == NONE) return NULL;
     return &ROUTES[currentRoute];
 }
-
-/*Vector *getCurrentFollowingPoint() {
-    Route *r = getCurrentRoute();
-    if (r == NULL || currentRoutePoint == NONE) {
-        return NULL;
-    }
-    return r->points[currentRoutePoint];
-}*/
 
 void _routePoint(int route, int x, int y) {
     Route *r = &ROUTES[route];
@@ -550,10 +540,6 @@ int angleTo(Vector *p) {
     return a;
 }
 
-int angleDiffTo(Vector *p) {
-    return angleDiff(Compass, angleTo(p));
-}
-
 double toRange(double value, double min, double max) {
     return min(max(min, value), max);
 }
@@ -565,43 +551,26 @@ double abs_double(double value) {
 // =========== COLORS ============
 
 /*bool isYellowRight() { return CSRight_R > 200 && CSRight_G > 200 && CSRight_B < 50; }
-
 bool isYellowLeft() { return CSLeft_R > 200 && CSLeft_G > 200 && CSLeft_B < 50; }
-
 bool isYellow() { return isYellowLeft() || isYellowRight(); }
-
 bool isRedRight() { return CSRight_R > 200 && CSRight_G < 50 && CSRight_B < 50; }
-
 bool isRedLeft() { return CSLeft_R > 200 && CSLeft_G < 50 && CSLeft_B < 50; }
-
 bool isRed() { return isRedRight() || isRedLeft(); }
-
 bool isGreenRight() { return CSRight_R < 50 && CSLeft_G > 200 && CSRight_B < 50; }
-
 bool isGreenLeft() { return CSLeft_R < 50 && CSLeft_G > 200 && CSLeft_B < 50; }
-
 bool isGreen() { return isGreenRight() || isGreenLeft(); }
-
 bool isBlackRight() { return CSRight_R < 50 && CSRight_G < 50 && CSRight_B < 50; }
-
 bool isBlackLeft() { return CSLeft_R < 50 && CSLeft_G < 50 && CSLeft_B < 50; }
-
 bool isBlack() { return isBlackRight() || isBlackLeft(); }
-
 bool isBlueRight() { return ((CSRight_R < 5) && (CSRight_G > 140 && CSRight_G < 180) && (CSRight_B > 250)); }
-
 bool isBlueLeft() { return ((CSLeft_R < 5) && (CSLeft_G > 140 && CSLeft_G < 180) && (CSLeft_B > 250)); }
-
 bool isBlue() { return isBlueLeft() && isBlueRight(); }
-
 bool isOrangeRight() {
     return ((CSRight_R > 200 && CSRight_R < 240) && (CSRight_G > 80 && CSRight_G < 110) && (CSRight_B < 5));
 }
-
 bool isOrangeLeft() {
     return ((CSLeft_R > 200 && CSLeft_R < 240) && (CSLeft_G > 80 && CSLeft_G < 110) && (CSLeft_B < 5));
 }
-
 bool isOrange() { return isOrangeRight() || isOrangeLeft(); }*/
 
 bool isOrangeRight() {
@@ -798,8 +767,6 @@ void observePosition() {
     }
 }
 
-//estPosX=%d;estPosY=%d;estDir
-
 int estPosX() {
     return (int) getEstimatedPosition()->x;
 }
@@ -810,6 +777,25 @@ int estPosY() {
 
 int estDir() {
     return (int) direction_degrees(getEstimatedDirection());
+}
+
+// ========== SUPEROBJECTS ==========
+
+void registerSuperobject() {
+    if (SuperObj_Num == 1 && SuperObj_X != lastSuperobjectRegistered->x && SuperObj_Y != lastSuperobjectRegistered->y) {
+        Vector *superobject = new_vector(SuperObj_X, SuperObj_Y);
+        lastSuperobjectRegistered = superobject;
+        superobjects[superobjectCount++] = superobject;
+    }
+}
+
+void unregisterSuperobject(int index) {
+    superobjects[index] = NULL;
+    // if it's not the last, move the last to the 'index' position
+    if (index != superobjectCount-1) {
+        superobjects[index] = superobjects[superobjectCount-1];
+    }
+    superobjectCount--;
 }
 
 // ========== ACTIONS =============
@@ -959,13 +945,13 @@ Vector *influenceByFlowPoint(const Vector *position, const FlowPoint *flowPoint)
     Direction *toFlowPoint = vector_directionTo(position, flowPoint->point);
     //val force = Math.abs(/*Math.cos(toFlowPoint.difference(flowPoint.direction))*/ 1) / Math.pow(flowPoint.point.distanceTo(position) / 100, 3.0);
 
-    Direction *flowDirection = toFlowPoint;
+    /*Direction *flowDirection = toFlowPoint;
     double angleDifference = direction_difference(toFlowPoint,
                                                   vector_directionTo(position, flowPoint->point));
     if (angleDifference > M_PI / 2) {
         // we are in front of the arrow, need to mirror the pull direction
         flowDirection = direction_mirrorWith(direction_invert(flowDirection), flowPoint->direction);
-    }
+    }*/
 
     double d = vector_distanceTo(flowPoint->point, position) / flowPoint->radius;
     double relativeAngle = direction_difference(direction_invert(flowPoint->direction), toFlowPoint);
@@ -997,6 +983,7 @@ Vector *influenceByBorders(const Vector *position) {
     v = vector_plus(v, vector_radial(new_Direction(M_PI), forceOfBorder(MAP_WIDTH - position->x))); // right border
     v = vector_plus(v,
                     vector_radial(new_Direction(M_PI * 3 / 2), forceOfBorder(MAP_HEIGHT - position->y))); // top border
+    return v;
 }
 
 Vector *influenceRandom(double distanceToNearestFlowPoint) {
@@ -1138,20 +1125,6 @@ int doStates() {
     return ACTION_NORMAL;
 }
 
-void followTech() {
-    int j = currentTech;
-    int DST_WALL = 7;
-    if (j == 1) {
-        if (US_Front > DST_WALL) {
-
-            return;
-        } else {
-
-            currentTech++;
-        }
-    }
-}
-
 void Game0() {}
 
 void Game1() {
@@ -1165,6 +1138,7 @@ void Game1() {
     }
     ticks += 1;
 
+    registerSuperobject();
     observePosition();
 
     lastState = doStates();
