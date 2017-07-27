@@ -43,7 +43,7 @@
 typedef int bool;
 
 //The robot ID : It must be two char, such as '00','kl' or 'Cr'.
-char AI_MyID[2] = {'0', '2'};
+char AI_MyID[2] = {'1', '0'};
 
 double toRange(double value, double min, double max);
 
@@ -71,15 +71,15 @@ Vector new_vector(double xa, double ya) {
 }
 
 typedef struct {
-    int xa, xb, ya, yb;
+    int xa, ya, xb, yb;
 } Area;
 
 Area new_area(int xa, int ya, int xb, int yb) {
     Area v;
-    v.xa = xa;
-    v.xb = xb;
-    v.ya = ya;
-    v.yb = yb;
+    v.xa = min(xa, xb);
+    v.ya = min(ya, yb);
+    v.xb = max(xa, xb);
+    v.yb = max(ya, yb);
     return v;
 }
 
@@ -128,18 +128,25 @@ FlowLine new_FlowLine(Anchor pa, Anchor pb) {
 }
 
 typedef struct {
+    int count;
+    Vector points[30];
+} Route;
+
+typedef struct {
+    int count;
+    Anchor points[30];
+} FlowRoute;
+
+typedef struct {
     double randomnessSize;
     int anchorCount;
     Anchor anchors[30];
     FlowLine flowLines[30];
     int flowPointCount;
     FlowPoint flowPoints[10];
+    int routeCount;
+    FlowRoute flowRoutes[10];
 } Environment;
-
-typedef struct {
-    int count;
-    Vector points[30];
-} Route;
 
 typedef struct {
     Vector a;
@@ -152,6 +159,24 @@ Wall new_Wall(Vector a, Vector b) {
     v.b = b;
     return v;
 };
+
+typedef struct {
+    Area area;
+    Area entry;
+    Route route;
+} SuperobjectRule;
+
+typedef struct {
+    FlowPoint point;
+    FlowLine line;
+} FlowPointAndLine;
+
+FlowPointAndLine new_FlowPointAndLine(FlowPoint point, FlowLine line) {
+    FlowPointAndLine o;
+    o.point = point;
+    o.line = line;
+    return o;
+}
 
 //========== VECTOR ==========
 
@@ -266,7 +291,7 @@ Direction direction_averageWith(Direction t, Direction direction) {
 
 //========== FLOWLINE ==========
 
-FlowPoint nearestFlowPoint(FlowLine t, Vector point) {
+FlowPoint nearestFlowPointOnFlowLine(FlowLine t, Vector point) {
     Vector aToP = vector_vectorTo(t.pa.point, point);
     Vector aToB = vector_vectorTo(t.pa.point, t.pb.point);
     double atb2 = pow(aToB.x, 2) + pow(aToB.y, 2);
@@ -278,6 +303,17 @@ FlowPoint nearestFlowPoint(FlowLine t, Vector point) {
                          tx * t.pb.radius + (1 - tx) * t.pa.radius,
                          vector_direction(aToB));
 }
+
+/*Vector nearestPointOnLine(Vector pa, Vector pb, Vector point) {
+    Vector aToP = vector_vectorTo(pa, point);
+    Vector aToB = vector_vectorTo(pa, pb);
+    double atb2 = pow(aToB.x, 2) + pow(aToB.y, 2);
+    double atp_dot_atb = aToP.x * aToB.x + aToP.y * aToB.y;
+
+    double tx = toRange(atp_dot_atb / atb2, 0, 1);
+
+    return vector_plus(pa, vector_multiply(aToB, tx));
+}*/
 
 FlowLine flowline_move(FlowLine t, Vector moveVector) {
     return new_FlowLine(
@@ -351,7 +387,7 @@ int DEPOSITING_TIME = 44;
 int RANDOM_COORDINATES_PADDING = 30;
 int US_DISTANCE = 3;
 int ROUTE_DISTANCE_THRESHOLD = 8;
-int SUPEROBJECT_FLOWLINE_RADIUS = 4;
+int SMALL_RADIUS = 4;
 int ROBOT_WIDTH = 15;
 /**
  * Collect policy = maximum number of collected objects of one color
@@ -360,6 +396,7 @@ int ROBOT_WIDTH = 15;
  *  2 - space for 2 of each
  */
 int POLICY_COLLECT = 2;
+double SUPEROBJECT_VISION_DISTANCE = 140;
 
 double BORDER_DISTANCE = 20;
 double COEFF_K = 16;
@@ -432,26 +469,28 @@ void _area(int x1, int y1, int x2, int y2) {
 }
 
 // ========== ENVIRONMENTS ==========
-#define ENVIRONMENT_COUNT 1
-Environment ENVIRONMENTS[] = {
-        { // STANDARD
-                0.6, // randomness
-                0, {}, {}, 0, {}
-        }
-};
+#define ENVIRONMENT_COUNT 2
+Environment ENVIRONMENTS[2];
+
+int environment_count = 0;
 
 Environment *getCurrentEnv() {
     if (currentEnvironment == NONE) return NULL;
     return &ENVIRONMENTS[currentEnvironment];
 }
 
-void _anchor(int env, int x, int y, int radius) {
-    Environment *e = &ENVIRONMENTS[env];
+void _environment(double randomnessSize) { // _environment must be defined before _anchor, _flowPoint
+    Environment *e = &ENVIRONMENTS[environment_count++];
+    e->randomnessSize = randomnessSize;
+}
+
+void _anchor(int x, int y, int radius) {
+    Environment *e = &ENVIRONMENTS[environment_count - 1];
     e->anchors[e->anchorCount++] = new_Anchor(new_vector(x, y), radius);
 }
 
-void _flowPoint(int env, int x, int y, int radius, int direction) {
-    Environment *e = &ENVIRONMENTS[env];
+void _flowPoint(int x, int y, int radius, int direction) {
+    Environment *e = &ENVIRONMENTS[environment_count - 1];
     e->flowPoints[e->flowPointCount++] = new_FlowPoint(new_vector(x, y), radius, direction_fromDegrees(direction));
 }
 
@@ -464,6 +503,17 @@ void _init_flowlines() {
             e->flowLines[i] = new_FlowLine(aa, ab);
         }
     }
+}
+
+void _environment_route() {
+    Environment *e = &ENVIRONMENTS[environment_count - 1];
+    e->routeCount++;
+}
+
+void _environment_route_point(int x, int y, int radius) {
+    Environment *e = &ENVIRONMENTS[environment_count - 1];
+    FlowRoute *r = &(e->flowRoutes[e->routeCount - 1]);
+    r->points[r->count++] = new_Anchor(new_vector(x, y), radius);
 }
 
 // ========== ROUTES ==========
@@ -481,56 +531,69 @@ void _routePoint(int route, int x, int y) {
     r->points[r->count++] = new_vector(x, y);
 }
 
-// =============WALLS=============
+// ============= WALLS =============
 #define WALLS_COUNT 1
 Wall WALLS[WALLS_COUNT];
 
 int wall_count = 0;
 
-Wall _wall(int ax, int ay, int bx, int by) {
+void _wall(int ax, int ay, int bx, int by) {
     WALLS[wall_count++] = new_Wall(new_vector(ax, ay), new_vector(bx, by));
 };
 
+// ========== SUPEROBJECTRULES ==========
+
+SuperobjectRule SUPEROBJECT_RULES[20];
+int superobjectRulesCount = 0;
+
+void _rule(int areaXa, int areaYa, int areaXb, int areaYb, int entryXa, int entryYa, int entryXb, int entryYb) {
+    SuperobjectRule *r = &SUPEROBJECT_RULES[superobjectRulesCount++];
+    r->area = new_area(areaXa, areaYa, areaXb, areaYb);
+    r->entry = new_area(entryXa, entryYa, entryXb, entryYb);
+    r->route.count = 0;
+}
+
+void _rule_route_point(int x, int y) { // _rule must be defined first
+    // add the route point to the last SuperobjectRule
+    SuperobjectRule *r = &SUPEROBJECT_RULES[superobjectRulesCount - 1];
+    r->route.points[r->route.count++] = new_vector(x, y);
+}
+
+// ========== INITIALIZATION ==========
+
 void _init_values() {
-    //####################VALUES####################
-    _anchor(E_A, 88, 58, 20);
-    _anchor(E_A, 102, 145, 10);
-    _anchor(E_A, 90, 200, 35);
-    _anchor(E_A, 197, 244, 4);
-    _anchor(E_A, 280, 242, 4);
-    _anchor(E_A, 292, 134, 20);
-    _anchor(E_A, 337, 90, 4);
-    _anchor(E_A, 337, 24, 4);
-    _anchor(E_A, 190, 26, 20);
 
-    _flowPoint(E_A, 10, 165, 60, 80);
+    // ===== GLOBAL
+    _wall(100, 200, 300, 150);
 
-    // routes: put the list of points here
-    int r = 6;
-    int r2 = 5;
-    _routePoint(0, 18, 72 + r);//1
-    _routePoint(0, 74 + r, 70);
-    _routePoint(0, 72, 106 + r);
-    _routePoint(0, 107 + r, 102);
-    _routePoint(0, 110, 72 - r);
-    _routePoint(0, 164 + r, 71);
-    _routePoint(0, 159, 135 + r);
-    _routePoint(0, 100 - r, 135);
-    _routePoint(0, 100, 167 + r);
-    _routePoint(0, 193 + r, 175);//10
-    _routePoint(0, 188, 194 + r);
-    _routePoint(0, 71 - r, 198);
-    _routePoint(0, 41 - r2, 246 + r2);
-    _routePoint(0, 250 + r, 250);//before 15
-    _routePoint(0, 249, 71 - r);//16
-    _routePoint(0, 162 - r2, 16);
-    _routePoint(0, 235 + r, 45);//before 18
-    _routePoint(0, 281 + r, 16 - r2);//18
-    _routePoint(0, 338 + r2, 102 + r);
-    _routePoint(0, 307, 170 + r);//before END
-    _routePoint(0, 339, 247 + r);
+    _rule(117, 201, 201, 156, 23, 239, 80, 124);
+    _rule_route_point(79, 195);
+    _rule_route_point(120, 194);
 
-    _area(1, 2, 3, 4);
+
+    // ===== ENVIRONMENT: normal
+    _environment(0.6);
+
+    _anchor(88, 58, 20);
+    _anchor(102, 145, 10);
+    _anchor(90, 200, 35);
+    _anchor(197, 244, 4);
+    _anchor(280, 242, 4);
+    _anchor(292, 134, 20);
+    _anchor(337, 90, 4);
+    _anchor(337, 24, 4);
+    _anchor(190, 26, 20);
+
+    _flowPoint(10, 165, 60, 80);
+
+    _environment_route();
+
+    _environment_route_point(1, 2, SMALL_RADIUS);
+    _environment_route_point(3, 4, SMALL_RADIUS);
+
+    // ===== ENVIRONMENT: deposit
+    _environment(0.1);
+
 }
 
 /***
@@ -919,25 +982,27 @@ bool isNotObstructed(Vector a, Vector b) {
 
 void generateSuperobjectRoute() {
     Vector position = getEstimatedPosition();
-    Vector bestSuperobject = {};
+
     int bestSuperobjectIndex = NONE;
-    double bestDistance = 0, distance;
+    double bestDistance = 0;
+
     for (int index = 0; index < superobjectCount; index++) {
         Vector superobject = superobjects[index];
-        if (vector_distanceTo(position, superobject) < 141 && isNotObstructed(position, superobject)) {
-            distance = vector_distanceTo(position, superobject);
+
+        if (vector_distanceTo(position, superobject) <= SUPEROBJECT_VISION_DISTANCE
+            && isNotObstructed(position, superobject)) {
+            double distance = vector_distanceTo(position, superobject);
             if (bestSuperobjectIndex == NONE || distance < bestDistance) {
-                bestDistance = distance;
-                bestSuperobject = superobject;
                 bestSuperobjectIndex = index;
+                bestDistance = distance;
             }
         }
     }
     if (bestSuperobjectIndex != NONE) {
         isFollowingSuperobject = true;
         superobjectFlowLine = new_FlowLine(
-                new_Anchor(position, SUPEROBJECT_FLOWLINE_RADIUS),
-                new_Anchor(bestSuperobject, SUPEROBJECT_FLOWLINE_RADIUS)
+                new_Anchor(position, SMALL_RADIUS),
+                new_Anchor(superobjects[bestSuperobjectIndex], SMALL_RADIUS)
         );
         superobjectIndex = bestSuperobjectIndex;
     } else {
@@ -1090,7 +1155,7 @@ FlowPoint calculateNearestFlowPoint(Vector point) {
     Environment *env = getCurrentEnv();
     for (int i = 0; i < env->anchorCount; i++) {
         FlowLine flowLine = env->flowLines[i];
-        FlowPoint current = nearestFlowPoint(flowLine, point);
+        FlowPoint current = nearestFlowPointOnFlowLine(flowLine, point);
         double dst = vector_distanceTo(point, current.point);
         if (distance > dst) {
             distance = dst;
@@ -1100,7 +1165,27 @@ FlowPoint calculateNearestFlowPoint(Vector point) {
     return nearest;
 }
 
+FlowPointAndLine calculateNearestFlowRoutePoint(Vector point, FlowRoute *route) {
+    // similar to calculateNearestFlowPoint
+    double distance = DBL_MAX;
+    FlowPoint nearest = new_FlowPoint(new_vector(-1, -1), 0, 0);
+    FlowLine line = {};
+    for (int i = 0; i < route->count - 1; i++) {
+        FlowLine flowLine = new_FlowLine(route->points[i], route->points[i + 1]);
+        FlowPoint current = nearestFlowPointOnFlowLine(flowLine, point);
+        double dst = vector_distanceTo(point, current.point);
+        if (distance > dst) {
+            distance = dst;
+            nearest = current;
+            line = flowLine;
+        }
+    }
+    return new_FlowPointAndLine(nearest, line);
+}
+
 Vector influenceByFlowPoint(const Vector position, const FlowPoint flowPoint) {
+    if (flowPoint.point.x == -1) return new_vector(0, 0);
+
     Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
     //val force = Math.abs(/*Math.cos(toFlowPoint.difference(flowPoint.direction))*/ 1) / Math.pow(flowPoint.point.distanceTo(position) / 100, 3.0);
 
@@ -1116,9 +1201,27 @@ Vector influenceByFlowPoint(const Vector position, const FlowPoint flowPoint) {
     double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
     double weight = 1 - pow(2.0, -d * d);
     weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
-    //weight = 1;
     Direction pullDirection = direction_weightedAverageWith(flowPoint.direction, toFlowPoint, weight);
+
     return vector_radial(pullDirection, 1.0);
+}
+
+Vector influenceByFlowPointWithEnd(const Vector position, const FlowPoint flowPoint, const FlowLine flowLine) {
+    if (flowPoint.point.x == -1) return new_vector(0, 0);
+
+    Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
+
+    double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
+    double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
+    double weight = 1 - pow(2.0, -d * d);
+    weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
+    Direction pullDirection = direction_weightedAverageWith(flowPoint.direction, toFlowPoint, weight);
+
+    double projectionDistance = vector_distanceTo(flowPoint.point, flowLine.pb.point);
+    weight = toRange(projectionDistance / flowLine.pb.radius - 1, 0.0, 1.0);
+    Direction final = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection, weight);
+
+    return vector_radial(final, 1.0);
 }
 
 double forceOfBorder(double distance) {
@@ -1149,7 +1252,7 @@ Vector influenceRandom(double distanceToNearestFlowPoint) {
     int offset = randn(RANDOM_VECTOR_STEP_DEVIATION * 2) - RANDOM_VECTOR_STEP_DEVIATION; // offset in degrees
     lastRandomDirection = direction_plus(lastRandomDirection, direction_fromDegrees(offset));
     double randomForce = max(0, -(1 / (distanceToNearestFlowPoint - 1) * 3) + 1);
-    return vector_radial(lastRandomDirection, RANDOM_VECTOR_SIZE * randomForce);
+    return vector_radial(lastRandomDirection, getCurrentEnv()->randomnessSize * randomForce);
 }
 
 Vector influenceByDiscreteFlowPoint(const Vector position, FlowPoint flowPoint) {
@@ -1168,18 +1271,39 @@ Vector influenceByDiscreteFlowPoints(const Vector position) {
     return sum;
 }
 
+Vector influenceByRoute(const Vector position, FlowRoute *route) {
+    FlowPointAndLine result = calculateNearestFlowRoutePoint(position, route);
+    Vector lineBPoint =result.line.pb.point;
+    Vector lastRoutePoint = route->points[route->count-1].point;
+    if (lineBPoint.x == lastRoutePoint.x && lineBPoint.y == lastRoutePoint.y) {
+        return influenceByFlowPointWithEnd(position, result.point, result.line);
+    }
+    return influenceByFlowPoint(position, result.point);
+}
+
+Vector influenceByRoutes(const Vector position) {
+    Vector sum = new_vector(0, 0);
+    Environment *env = getCurrentEnv();
+    for (int i = 0; i < env->routeCount; i++) {
+        sum = vector_plus(sum, influenceByRoute(position, &env->flowRoutes[i]));
+    }
+    return sum;
+}
+
 Vector calculateMoveVector(Vector position) {
     FlowPoint nearestFlowPoint = calculateNearestFlowPoint(position);
     Vector infFlowPoint = influenceByFlowPoint(position, nearestFlowPoint);
     Vector infBorders = influenceByBorders(position);
     Vector infRandom = influenceRandom(vector_distanceTo(position, nearestFlowPoint.point));
     Vector infDiscretes = influenceByDiscreteFlowPoints(position);
-    return vector_plus(vector_plus(vector_plus(infFlowPoint, infBorders), infRandom), infDiscretes);
+    Vector infRoutes = influenceByRoutes(position);
+    return vector_plus(vector_plus(vector_plus(vector_plus(infFlowPoint, infBorders), infRandom), infDiscretes),
+                       infRoutes);
 }
 
 Vector calculateSuperobjectFlowlineMoveVector(Vector position) {
     FlowLine flowLine = superobjectFlowLine;
-    FlowPoint flowPoint = nearestFlowPoint(flowLine, position);
+    FlowPoint flowPoint = nearestFlowPointOnFlowLine(flowLine, position);
     Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
 
     double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
@@ -1247,7 +1371,6 @@ int doStates() {
         stop();
         return ACTION_COLLECT;
     }
-
     mustRemainCollecting = false;
     collectingTime = 0;
 
@@ -1257,30 +1380,16 @@ int doStates() {
         return ACTION_OBSTACLE_AVOIDING;
     }
     if (shouldAvoidObstacle()) {
-        avoidingObstacleTime = 7;
+        avoidingObstacleTime = 15;
         if (seesObstacleLeft() || isYellowLeft()) {
-            move(-3, -1);
+            move(-2, -1);
         } else if (seesObstacleRight() || isYellowRight()) {
-            move(-1, -3);
+            move(-1, -2);
         } else {
             move(-2, -2);
         }
         return ACTION_OBSTACLE_AVOID;
     }
-
-    // Avoid border
-    /*if (avoidingBorderTime > 0) {
-        avoidingBorderTime--;
-        goTo(avoidingBorderPos);
-        return 41;
-    }
-    if (shouldAvoidBorder(currentArea)) {
-        //avoidingBorderPos = randomCoordinates(currentArea);
-        avoidingBorderPos = new_vector(100, 100);
-        avoidingBorderTime = AVOIDING_BORDER_TIME;
-        goTo(avoidingBorderPos);
-        return 40;
-    }*/
 
     // Deposit
     if (shouldDeposit() && canDeposit()) {
@@ -1289,7 +1398,6 @@ int doStates() {
         stop();
         return ACTION_DEPOSIT;
     }
-
     if (shouldDeposit() && (isOrangeLeft() || isOrangeRight())) {
         if (isOrangeLeft()) {
             move(0, 2); // go to left
@@ -1299,6 +1407,7 @@ int doStates() {
         return ACTION_ADJUST_FOR_DEPOSIT;
     }
 
+    // Superobject Vision
     if (!isFollowingSuperobject) {
         generateSuperobjectRoute();
     }
