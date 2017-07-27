@@ -207,45 +207,45 @@ double direction_normalize(double value) {
     return value;
 }
 
-double direction_differenceTo(const Direction *this, const Direction *direction) {
+double direction_differenceTo(const Direction *t, const Direction *direction) {
     double target = *direction;
-    if (target < (*this)) target += 2 * M_PI;
-    return target - (*this);
+    if (target < (*t)) target += 2 * M_PI;
+    return target - (*t);
 }
 
-double direction_difference(const Direction *this, const Direction *direction) {
+double direction_difference(const Direction *t, const Direction *direction) {
     return min(
-            direction_differenceTo(this, direction),
-            direction_differenceTo(direction, this)
+            direction_differenceTo(t, direction),
+            direction_differenceTo(direction, t)
     );
 }
 
-Direction *direction_plus(const Direction *this, const Direction *direction) {
-    return new_Direction((*this) + (*direction));
+Direction *direction_plus(const Direction *t, const Direction *direction) {
+    return new_Direction((*t) + (*direction));
 }
 
-Direction *direction_minus(const Direction *this, const Direction *direction) {
-    return new_Direction((*this) - (*direction));
+Direction *direction_minus(const Direction *t, const Direction *direction) {
+    return new_Direction((*t) - (*direction));
 }
 
-Direction *direction_invert(const Direction *this) {
-    return new_Direction((*this) + M_PI);
+Direction *direction_invert(const Direction *t) {
+    return new_Direction((*t) + M_PI);
 }
 
-double direction_degrees(const Direction *this) {
-    return (*this) * 180 / M_PI;
+double direction_degrees(const Direction *t) {
+    return (*t) * 180 / M_PI;
 }
 
-Direction *direction_mirrorWith(const Direction *this, const Direction *axis) {
-    return new_Direction(2 * (*axis) - (*this));
+Direction *direction_mirrorWith(const Direction *t, const Direction *axis) {
+    return new_Direction(2 * (*axis) - (*t));
 }
 
-Direction *direction_weightedAverageWith(Direction *this, Direction *direction, double weight) {
-    return vector_direction(vector_plus(vector_radial(this, 1 - weight), vector_radial(direction, weight)));
+Direction *direction_weightedAverageWith(Direction *t, Direction *direction, double weight) {
+    return vector_direction(vector_plus(vector_radial(t, 1 - weight), vector_radial(direction, weight)));
 }
 
-Direction *direction_averageWith(Direction *this, Direction *direction) {
-    return direction_weightedAverageWith(this, direction, 0.5);
+Direction *direction_averageWith(Direction *t, Direction *direction) {
+    return direction_weightedAverageWith(t, direction, 0.5);
 }
 
 //========== ANCHOR ==========
@@ -254,16 +254,16 @@ Direction *direction_averageWith(Direction *this, Direction *direction) {
 
 //========== FLOWLINE ==========
 
-FlowPoint *nearestFlowPoint(FlowLine *this, Vector *point) {
-    Vector *aToP = vector_vectorTo(this->pa->point, point);
-    Vector *aToB = vector_vectorTo(this->pa->point, this->pb->point);
+FlowPoint *nearestFlowPoint(FlowLine *t, Vector *point) {
+    Vector *aToP = vector_vectorTo(t->pa->point, point);
+    Vector *aToB = vector_vectorTo(t->pa->point, t->pb->point);
     double atb2 = pow(aToB->x, 2) + pow(aToB->y, 2);
     double atp_dot_atb = aToP->x * aToB->x + aToP->y * aToB->y;
 
-    double t = toRange(atp_dot_atb / atb2, 0, 1);
+    double tx = toRange(atp_dot_atb / atb2, 0, 1);
 
-    return new_FlowPoint(vector_plus(this->pa->point, vector_multiply(aToB, t)),
-                         t * this->pb->radius + (1 - t) * this->pa->radius,
+    return new_FlowPoint(vector_plus(t->pa->point, vector_multiply(aToB, tx)),
+                         tx * t->pb->radius + (1 - tx) * t->pa->radius,
                          vector_direction(aToB));
 }
 
