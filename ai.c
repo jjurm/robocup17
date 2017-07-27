@@ -475,27 +475,27 @@ void _init_values() {
     // routes: put the list of points here
     int r = 6;
     int r2 = 5;
-    _routePoint(0,18,72+r);//1
-    _routePoint(0,74+r,70);
-    _routePoint(0,72,106+r);
-    _routePoint(0,106+r,102);
-    _routePoint(0,110,70-r);
-    _routePoint(0,164+r,71);
-    _routePoint(0,159,135+r);
-    _routePoint(0,100-r,135);
-    _routePoint(0,100,165+r);
-    _routePoint(0,193+r,165);//10
-    _routePoint(0,188,194+r);
-    _routePoint(0,71-r,193);
-    _routePoint(0,41-r2,246+r2);
-    _routePoint(0,247+r,246);//after 14
-    _routePoint(0,249,71-r);//16
-    _routePoint(0,162-r2,16);
-    _routePoint(0,235+r,45);//before 18
-    _routePoint(0,281+r,16-r2);//18
-    _routePoint(0,338+r2,102+r);
-    _routePoint(0,307,170+r);//before END
-    _routePoint(0,339,247+r);
+    _routePoint(0, 18, 72 + r);//1
+    _routePoint(0, 74 + r, 70);
+    _routePoint(0, 72, 106 + r);
+    _routePoint(0, 107 + r, 102);
+    _routePoint(0, 110, 72 - r);
+    _routePoint(0, 164 + r, 71);
+    _routePoint(0, 159, 135 + r);
+    _routePoint(0, 100 - r, 135);
+    _routePoint(0, 100, 167 + r);
+    _routePoint(0, 193 + r, 175);//10
+    _routePoint(0, 188, 194 + r);
+    _routePoint(0, 71 - r, 198);
+    _routePoint(0, 41 - r2, 246 + r2);
+    _routePoint(0, 250 + r, 250);//before 15
+    _routePoint(0, 249, 71 - r);//16
+    _routePoint(0, 162 - r2, 16);
+    _routePoint(0, 235 + r, 45);//before 18
+    _routePoint(0, 281 + r, 16 - r2);//18
+    _routePoint(0, 338 + r2, 102 + r);
+    _routePoint(0, 307, 170 + r);//before END
+    _routePoint(0, 339, 247 + r);
 }
 
 /***
@@ -793,9 +793,23 @@ void observePosition() {
     } else {
         double forward = (WheelLeft + WheelRight) / 2;
         estimatedPosition = vector_plus(estimatedPosition, vector_radial(estimatedDirection, 0.6 * forward));
-        double rotation = abs(WheelLeft - WheelRight) / 2;
-        estimatedDirection = direction_plus(estimatedDirection, new_Direction(rotation * 4.48));
+        double rotation = (WheelRight - WheelLeft) / 2;
+        estimatedDirection = direction_plus(estimatedDirection, direction_fromDegrees(rotation * 4.48));
     }
+}
+
+//estPosX=%d;estPosY=%d;estDir
+
+int estPosX() {
+    return (int) getEstimatedPosition()->x;
+}
+
+int estPosY() {
+    return (int) getEstimatedPosition()->y;
+}
+
+int estDir() {
+    return (int) direction_degrees(getEstimatedDirection());
 }
 
 // ========== ACTIONS =============
@@ -839,8 +853,15 @@ double getSteerAngleTo(Vector *targetPoint) {
     return getSteerAngle(direction_differenceTo(getEstimatedDirection(), targetDirection));
 }
 
+double getAngleTolerance() {
+    if (isPositionKnown()) {
+        return STD_ANGLE_TOLERANCE;
+    }
+    return 2 * STD_ANGLE_TOLERANCE;
+}
+
 void steerWithAngle(double steerAngle) {
-    if (abs_double(steerAngle) < STD_ANGLE_TOLERANCE) {
+    if (abs_double(steerAngle) < getAngleTolerance()) {
         forward(STD_SPEED);
     } else {
         double k = toDegrees(abs_double(steerAngle)) / 40;
@@ -858,32 +879,39 @@ void steerTo(Vector *point) {
 void turnTo(Vector *p) {
     double steerAngle = getSteerAngleTo(p);
     int steerSpeed;
-    if (steerAngle < 40) {
-        steerSpeed = 1;
-    } else if (steerAngle < 70) {
-        steerSpeed = 2;
+    if (isPositionKnown()) {
+        if (steerAngle < 40) {
+            steerSpeed = 1;
+        } else if (steerAngle < 70) {
+            steerSpeed = 2;
+        } else {
+            steerSpeed = 4;
+        }
     } else {
-        steerSpeed = 4;
+        steerSpeed = 1;
     }
-    turn(steerSpeed, steerAngle > 0);
+    turn(steerSpeed, steerAngle
+                     > 0);
 }
 
 void goTo(Vector *p, bool mayGoFaster) {
     double steerAngle = getSteerAngleTo(p);
-    if (abs_double(steerAngle) > STD_ANGLE_TOLERANCE) {
+    double factor = 1;
+    double distance = vector_distanceTo(getEstimatedPosition(), p);
+    if (distance < 5) factor = 1.5;
+    if (abs_double(steerAngle) > getAngleTolerance() * factor) {
         turnTo(p);
     } else {
         int speed = STD_SPEED;
-        if (mayGoFaster) {
-            double distance = vector_distanceTo(getEstimatedPosition(), p);
-            if (distance > 40) {
+        if (mayGoFaster && isPositionKnown()) {
+            if (distance > 30) {
                 speed += 1;
             }
-            if (distance > 70) {
+            if (distance > 60) {
                 speed += 1;
             }
         }
-        forward(STD_SPEED);
+        forward(speed);
     }
 }
 
@@ -1044,12 +1072,12 @@ int doStates() {
         if (collectingTime < 10) isLongerCollecting = true;
         return ACTION_COLLECTING;
     }
-    /*if (canCollect()) {
+    if (canCollect()) {
         forward(0);
         collectingTime = 38;
         LoadedObjects++;
         return ACTION_COLLECT;
-    }*/
+    }
 
     isLongerCollecting = false;
     collectingTime = 0;
@@ -1086,12 +1114,12 @@ int doStates() {
     }*/
 
     // Deposit
-    /*if (canDeposit() && shouldDeposit()) {
+    if (canDeposit() && shouldDeposit()) {
         depositingTime = DEPOSITING_TIME;
         LoadedObjects = 0;
         forward(0);
         return ACTION_DEPOSIT;
-    }*/
+    }
 
     // Follow route
     Route *route = getCurrentRoute();
@@ -1184,8 +1212,10 @@ char info[1024];
 
 DLL_EXPORT char *GetDebugInfo() {
     sprintf(info,
-            "debug1=%d;debug2=%d;action=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
-            debug1, debug2, lastState, Duration, SuperDuration, bGameEnd, CurAction, CurGame, SuperObj_Num, SuperObj_X, SuperObj_Y,
+            "debug1=%d;debug2=%d;lastState=%d;estPosX=%d;estPosY=%d;estDir=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
+            debug1, debug2, lastState, estPosX(), estPosY(), estDir(), Duration, SuperDuration, bGameEnd, CurAction,
+            CurGame, SuperObj_Num, SuperObj_X,
+            SuperObj_Y,
             Teleport,
             LoadedObjects, US_Front, US_Left, US_Right, CSLeft_R, CSLeft_G, CSLeft_B, CSRight_R, CSRight_G,
             CSRight_B,
