@@ -144,11 +144,11 @@ typedef struct {
 } Route;
 
 typedef struct {
-    Vector a;
-    Vector b;
+    Vector *a;
+    Vector *b;
 } Wall;
 
-Wall *new_Wall(Vector a, Vector b){
+Wall *new_Wall(Vector *a, Vector *b){
     Wall *o = malloc(sizeof(Wall));
     o->a = a;
     o->b = b;
@@ -462,11 +462,11 @@ void _routePoint(int route, int x, int y) {
 
 // =============WALLS=============
 #define WALLS_COUNT 1
-Wall WALLS[WALLS_COUNT];
+Wall *WALLS[WALLS_COUNT];
 
 int wall_count=0;
 
-Wall _wall(ax, ay, bx, by){
+Wall _wall(int ax, int ay, int bx, int by){
     WALLS[wall_count++]=new_Wall(new_vector(ax,ay), new_vector(bx,by));
 };
 
