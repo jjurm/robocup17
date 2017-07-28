@@ -45,7 +45,7 @@ typedef int bool;
 //The robot ID : It must be two char, such as '00','kl' or 'Cr'.
 char AI_MyID[2] = {'1', '0'};
 
-double toRange(double value, double min, double max);
+double toRange(double value, double mmin, double mmax);
 
 double direction_normalize(double value);
 
@@ -428,7 +428,6 @@ int avoidingObstacleTime = 0;
 int avoidingBorderTime = 0;
 Vector *avoidingBorderPos;
 int depositingTime = 0;
-int currentEnvironment = 0;
 int currentRoute = NONE;
 int currentRoutePoint = NONE;
 
@@ -442,6 +441,10 @@ Direction estimatedDirection;
 int motorLeft;
 int motorRight;
 Direction lastRandomDirection;
+
+// Flows
+Environment *environmentStack[5];
+int environmentStackSize = 0;
 
 //========== TEMPORARY variables ==========
 int lastState = 0;
@@ -475,8 +478,8 @@ Environment ENVIRONMENTS[2];
 int environment_count = 0;
 
 Environment *getCurrentEnv() {
-    if (currentEnvironment == NONE) return NULL;
-    return &ENVIRONMENTS[currentEnvironment];
+    if (environmentStackSize == 0) return NULL;
+    return environmentStack[environmentStackSize-1];
 }
 
 void _environment(double randomnessSize) { // _environment must be defined before _anchor, _flowPoint
@@ -516,6 +519,14 @@ void _environment_route_point(int x, int y, int radius) {
     r->points[r->count++] = new_Anchor(new_vector(x, y), radius);
 }
 
+void addEnvToStack(Environment *env) {
+    environmentStack[environmentStackSize++] = env;
+}
+
+Environment *popEnvStack() {
+    return environmentStack[--environmentStackSize];
+}
+
 // ========== ROUTES ==========
 
 #define ROUTES_COUNT 1 // routes: put number of routes here
@@ -532,7 +543,7 @@ void _routePoint(int route, int x, int y) {
 }
 
 // ============= WALLS =============
-#define WALLS_COUNT 1
+#define WALLS_COUNT 50
 Wall WALLS[WALLS_COUNT];
 
 int wall_count = 0;
@@ -564,35 +575,60 @@ void _rule_route_point(int x, int y) { // _rule must be defined first
 void _init_values() {
 
     // ===== GLOBAL
-    _wall(100, 200, 300, 150);
+    _wall(224, 49, 225, 44);
+    _wall(225, 44, 320, 44);
+    _wall(320, 44, 321, 74);
+    _wall(321, 74, 283, 74);
+    _wall(283, 74, 283, 50);
+    _wall(283, 50, 224, 49);
 
-    _rule(117, 201, 201, 156, 23, 239, 80, 124);
-    _rule_route_point(79, 195);
-    _rule_route_point(120, 194);
+    _wall(155, 105, 155, 115);
+    _wall(155, 115, 127, 142);
+    _wall(127, 142, 121, 142);
+    _wall(121, 142, 123, 107);
+    _wall(123, 105, 155, 105);
+
+    _wall(38, 116, 58, 99);
+    _wall(58, 99, 73, 104);
+    _wall(73, 104, 77, 116);
+    _wall(77, 116, 71, 143);
+    _wall(71, 143, 59, 152);
+    _wall(59, 152, 44, 150);
+    _wall(44, 150, 28, 130);
+    _wall(28, 130, 38, 116);
+
+    _wall(227, 229, 228, 163);
+    _wall(228, 163, 347, 160);
+
+    _wall(264, 122, 254, 110);
+    _wall(254, 110, 263, 100);
+    _wall(263, 100, 274, 110);
+    _wall(274, 110, 264, 122);
+
+    _rule(239, 255, 348, 171, 0, 258, 203, 169);
+    _rule_route_point(195, 246);
+    _rule_route_point(279, 245);
 
 
     // ===== ENVIRONMENT: normal
     _environment(0.6);
 
-    _anchor(88, 58, 20);
-    _anchor(102, 145, 10);
     _anchor(90, 200, 35);
     _anchor(197, 244, 4);
     _anchor(280, 242, 4);
-    _anchor(292, 134, 20);
-    _anchor(337, 90, 4);
-    _anchor(337, 24, 4);
-    _anchor(190, 26, 20);
+    _anchor(295, 210, 40);
+    _anchor(292, 100, 20);
+    _anchor(210, 65, 20);
+    _anchor(175, 142, 20);
 
     _flowPoint(10, 165, 60, 80);
 
-    _environment_route();
-
-    _environment_route_point(1, 2, SMALL_RADIUS);
-    _environment_route_point(3, 4, SMALL_RADIUS);
-
     // ===== ENVIRONMENT: deposit
-    _environment(0.1);
+    /*_environment(0.1);
+
+    _environment_route();
+    _environment_route_point(74, 26, 30);
+    _environment_route_point(174, 48, 20);*/
 
 }
 
@@ -648,12 +684,12 @@ int angleTo(Vector *p) {
     return a;
 }
 
-double toRange(double value, double min, double max) {
-    return min(max(min, value), max);
+double toRange(double value, double mmin, double mmax) {
+    return min(max(mmin, value), mmax);
 }
 
-int toRangeInt(int value, int min, int max) {
-    return min(max(min, value), max);
+int toRangeInt(int value, int mmin, int mmax) {
+    return min(max(mmin, value), mmax);
 }
 
 double abs_double(double value) {
@@ -833,6 +869,24 @@ bool shouldCollect() {
         return true;
     }
     return loadedColor[index] < POLICY_COLLECT;
+}
+
+void registerCollect() {
+    LoadedObjects++;
+    if (isRed()) {
+        loadedColor[0]++;
+    } else if (isBlack()) {
+        loadedColor[1]++;
+    } else if (isBlue()) {
+        loadedColor[2]++;
+    }
+}
+
+void registerDeposit() {
+    LoadedObjects = 0;
+    loadedColor[0] = 0;
+    loadedColor[1] = 0;
+    loadedColor[2] = 0;
 }
 
 bool seesObstacleLeft() {
@@ -1343,6 +1397,8 @@ void init() {
 
         lastPosition = estimatedPosition = getCurrentPosition();
         lastDirection = estimatedDirection = getCurrentDirection();
+
+        addEnvToStack(0);
     }
 }
 
@@ -1361,12 +1417,13 @@ int doStates() {
         if (collectingTime < 10 && canCollect()) mustRemainCollecting = false;
         return ACTION_COLLECTING;
     }
-    if (canCollect()) {
+    if (canCollect() && shouldCollect()) {
         collectingTime = 38;
         mustRemainCollecting = true;
-        LoadedObjects++;
-        if (isViolet()) {
-            stopFollowingSuperobject();
+        registerCollect();
+        if (isViolet()) stopFollowingSuperobject();
+        if (LoadedObjects >= 6) {
+            addEnvToStack(&ENVIRONMENTS[1]);
         }
         stop();
         return ACTION_COLLECT;
@@ -1394,7 +1451,8 @@ int doStates() {
     // Deposit
     if (shouldDeposit() && canDeposit()) {
         depositingTime = DEPOSITING_TIME;
-        LoadedObjects = 0;
+        if (LoadedObjects >= 6) popEnvStack();
+        registerDeposit();
         stop();
         return ACTION_DEPOSIT;
     }
