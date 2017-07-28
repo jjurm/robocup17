@@ -133,8 +133,9 @@ typedef struct {
 } Route;
 
 typedef struct {
+    bool withEnd;
     int count;
-    Anchor points[30];
+    Anchor points[15];
 } FlowRoute;
 
 typedef struct {
@@ -143,7 +144,7 @@ typedef struct {
     Anchor anchors[30];
     FlowLine flowLines[30];
     int flowPointCount;
-    FlowPoint flowPoints[10];
+    FlowPoint flowPoints[20];
     int routeCount;
     FlowRoute flowRoutes[10];
 } Environment;
@@ -382,6 +383,7 @@ int AI_SensorNum = 13;
 int MIN_DEP_LOADED_OBJECTS = 4;
 int STD_SPEED = 2;
 double STD_ANGLE_TOLERANCE = 8 * M_PI / 180;
+double STD_RANDOMNESS = 0.1;
 int AVOIDING_BORDER_TIME = 20;
 int DEPOSITING_TIME = 44;
 int RANDOM_COORDINATES_PADDING = 30;
@@ -395,7 +397,7 @@ int ROBOT_WIDTH = 15;
  *  1 - space for 1 of each
  *  2 - space for 2 of each
  */
-int POLICY_COLLECT = 2;
+int POLICY_COLLECT = 1;
 double SUPEROBJECT_VISION_DISTANCE = 140;
 
 double BORDER_DISTANCE = 20;
@@ -410,6 +412,7 @@ int ticks = 0;
 
 // Collecting objects
 int loadedColor[] = {0, 0, 0}; // red, black, blue
+int loadedSuperobject = 0;
 
 // Superobjects
 int superobjectCount = 0;
@@ -418,6 +421,7 @@ Vector lastSuperobjectRegistered = {-1, -1};
 bool isFollowingSuperobject = false;
 FlowLine superobjectFlowLine = {};
 int superobjectIndex = NONE;
+int lastDecidedForSuperobject = 10000000;
 
 //========== STATE variables ==========
 int collectingTime = 0;
@@ -443,8 +447,8 @@ int motorRight;
 Direction lastRandomDirection;
 
 // Flows
-Environment *environmentStack[5];
-int environmentStackSize = 0;
+int bottomEnvIndex;
+int depositEnvIndex = NONE;
 
 //========== TEMPORARY variables ==========
 int lastState = 0;
@@ -472,14 +476,28 @@ void _area(int x1, int y1, int x2, int y2) {
 }
 
 // ========== ENVIRONMENTS ==========
-#define ENVIRONMENT_COUNT 2
-Environment ENVIRONMENTS[2];
+#define ENVIRONMENT_COUNT 4
+Environment ENVIRONMENTS[ENVIRONMENT_COUNT];
 
 int environment_count = 0;
 
+Environment *getEnv(int index) {
+    return &ENVIRONMENTS[index];
+}
+
+int getCurrentEnvIndex() {
+    if (depositEnvIndex != NONE) {
+        return 0;
+    }
+    return bottomEnvIndex;
+}
+
 Environment *getCurrentEnv() {
-    if (environmentStackSize == 0) return NULL;
-    return environmentStack[environmentStackSize-1];
+    return getEnv(getCurrentEnvIndex());
+}
+
+void setBottomEnv(int index) {
+    bottomEnvIndex = index;
 }
 
 void _environment(double randomnessSize) { // _environment must be defined before _anchor, _flowPoint
@@ -508,9 +526,9 @@ void _init_flowlines() {
     }
 }
 
-void _environment_route() {
+void _environment_route(bool withEnd) {
     Environment *e = &ENVIRONMENTS[environment_count - 1];
-    e->routeCount++;
+    e->flowRoutes[e->routeCount++].withEnd = withEnd;
 }
 
 void _environment_route_point(int x, int y, int radius) {
@@ -519,13 +537,6 @@ void _environment_route_point(int x, int y, int radius) {
     r->points[r->count++] = new_Anchor(new_vector(x, y), radius);
 }
 
-void addEnvToStack(Environment *env) {
-    environmentStack[environmentStackSize++] = env;
-}
-
-Environment *popEnvStack() {
-    return environmentStack[--environmentStackSize];
-}
 
 // ========== ROUTES ==========
 
@@ -574,61 +585,236 @@ void _rule_route_point(int x, int y) { // _rule must be defined first
 
 void _init_values() {
 
-    // ===== GLOBAL
-    _wall(224, 49, 225, 44);
-    _wall(225, 44, 320, 44);
-    _wall(320, 44, 321, 74);
-    _wall(321, 74, 283, 74);
-    _wall(283, 74, 283, 50);
-    _wall(283, 50, 224, 49);
+    // ===== GLOBAl ========
 
-    _wall(155, 105, 155, 115);
-    _wall(155, 115, 127, 142);
-    _wall(127, 142, 121, 142);
-    _wall(121, 142, 123, 107);
-    _wall(123, 105, 155, 105);
+    //Wall: left dump stone dump stone
+    _wall(99, 89, 99, 160);
+    _wall(99, 160, 70, 159);
+    _wall(70, 159, 70, 171);
+    _wall(70, 171, 30, 169);
+    _wall(30, 169, 29, 198);
+    _wall(29, 198, 0, 198);
+    _wall(0, 198, 0, 168);
+    _wall(0, 168, 28, 168);
+    _wall(28, 168, 28, 160);
+    _wall(28, 160, 70, 160);
+    _wall(70, 160, 70, 130);
+    _wall(70, 130, 89, 130);
+    _wall(89, 130, 89, 89);
+    _wall(89, 89, 99, 89);
 
-    _wall(38, 116, 58, 99);
-    _wall(58, 99, 73, 104);
-    _wall(73, 104, 77, 116);
-    _wall(77, 116, 71, 143);
-    _wall(71, 143, 59, 152);
-    _wall(59, 152, 44, 150);
-    _wall(44, 150, 28, 130);
-    _wall(28, 130, 38, 116);
+    //Wall: up lefter stone
+    _wall(148, 270, 148, 231);
+    _wall(148, 231, 158, 231);
+    _wall(158, 231, 158, 270);
+    _wall(158, 270, 148, 270);
 
-    _wall(227, 229, 228, 163);
-    _wall(228, 163, 347, 160);
+    //Wall: up righter stone
+    _wall(198, 270, 198, 231);
+    _wall(198, 231, 208, 231);
+    _wall(208, 231, 208, 270);
+    _wall(208, 270, 198, 270);
 
-    _wall(264, 122, 254, 110);
-    _wall(254, 110, 263, 100);
-    _wall(263, 100, 274, 110);
-    _wall(274, 110, 264, 122);
+    //Wall: left, stone dump stone
+    _wall(0, 40, 40, 40);
+    _wall(40, 40, 40, 30);
+    _wall(40, 30, 70, 30);
+    _wall(70, 30, 70, 40);
+    _wall(70, 40, 108, 40);
+    _wall(108, 40, 108, 50);
+    _wall(108, 50, 70, 50);
+    _wall(70, 50, 70, 60);
+    _wall(70, 60, 40, 60);
+    _wall(40, 60, 40, 50);
+    _wall(40, 50, 0, 50);
+    _wall(0, 50, 0, 40);
 
-    _rule(239, 255, 348, 171, 0, 258, 203, 169);
-    _rule_route_point(195, 246);
-    _rule_route_point(279, 245);
+    // Wall: right, stone and dump
+    _wall(289, 159, 330, 159);
+    _wall(330, 159, 330, 169);
+    _wall(330, 169, 360, 169);
+    _wall(360, 169, 360, 198);
+    _wall(360, 198, 330, 198);
+    _wall(330, 198, 330, 169);
+    _wall(330, 169, 289, 169);
+    _wall(289, 169, 289, 159);
 
+    //Wall: right three stones
+    _wall(269, 130, 269, 90);
+    _wall(269, 90, 279, 90);
+    _wall(279, 90, 279, 80);
+    _wall(279, 80, 320, 80);
+    _wall(320, 80, 320, 70);
+    _wall(320, 70, 360, 70);
+    _wall(360, 70, 360, 80);
+    _wall(360, 80, 320, 80);
+    _wall(320, 80, 320, 90);
+    _wall(320, 90, 279, 90);
+    _wall(279, 90, 279, 130);
+    _wall(279, 130, 269, 130);
+    _wall(269, 130, 269, 130);
 
-    // ===== ENVIRONMENT: normal
-    _environment(0.6);
+    //Wall: right down, 1 stone
+    _wall(310, 0, 320, 0);
+    _wall(320, 0, 320, 40);
+    _wall(320, 40, 310, 40);
+    _wall(310, 40, 310, 0);
 
-    _anchor(90, 200, 35);
-    _anchor(197, 244, 4);
-    _anchor(280, 242, 4);
-    _anchor(295, 210, 40);
-    _anchor(292, 100, 20);
-    _anchor(210, 65, 20);
-    _anchor(175, 142, 20);
+    //Wall: tower in the swamp area and swamp blocker
+    _wall(163, 197, 163, 171);
+    _wall(163, 171, 192, 171);
+    _wall(192, 171, 192, 199);
+    _wall(192, 199, 165, 198);
+    _wall(165, 198, 219, 141);
+    _wall(219, 141, 163, 197);
 
-    _flowPoint(10, 165, 60, 80);
+    //Quick areas
+    _area(104, 205, 157, 54);
+    _area(104, 80, 302, 0);
+    _area(236, 226, 270, 66);
 
     // ===== ENVIRONMENT: deposit
-    /*_environment(0.1);
+    _environment(0.0);
 
-    _environment_route();
-    _environment_route_point(74, 26, 30);
-    _environment_route_point(174, 48, 20);*/
+    _environment_route(false);
+    _environment_route_point(23, 144, 8);
+    _environment_route_point(72, 76, 8);
+    _environment_route_point(130, 68, 12);
+    _environment_route_point(127, 27, 10);
+    _environment_route_point(20, 15, 4);
+
+    _environment_route(false);
+    _environment_route_point(133, 118, 10);
+    _environment_route_point(282, 59, 6);
+    _environment_route_point(338, 53, 4);
+    _environment_route_point(342, 20, 4);
+
+    _environment_route(false);
+    _environment_route_point(47, 224, 15);
+    _environment_route_point(180, 219, 8);
+    _environment_route_point(179, 252, 4);
+
+    _environment_route(false);
+    _environment_route_point(337, 116, 6);
+    _environment_route_point(255, 164, 6);
+    _environment_route_point(255, 218, 8);
+    _environment_route_point(174, 223, 8);
+    _environment_route_point(178, 249, 6);
+
+    _flowPoint(20, 66, 20, 60);
+    _flowPoint(85, 115, 20, -125);
+    _flowPoint(69, 144, 15, -135);
+    _flowPoint(129, 238, 30, -95);
+    _flowPoint(234, 240, 30, -80);
+    _flowPoint(296, 29, 20, 100);
+    _flowPoint(321, 228, 38, -170);
+    _flowPoint(285, 122, 16, 70);
+    _flowPoint(160, 49, 24, -165);
+    _flowPoint(73, 35, 15, -90);
+    _flowPoint(228, 137, 24, 0);
+    _flowPoint(177, 144, 24, -130);
+    _flowPoint(333, 68, 16, -80);
+
+    // ===== ENVIRONMENT: normal 1
+    _environment(STD_RANDOMNESS);
+
+    _environment_route(false);
+    _environment_route_point(13, 154, 18);
+    _environment_route_point(66, 77, 8);
+    _environment_route_point(123, 71, 12);
+    _environment_route_point(115, 173, 20);
+    _environment_route_point(22, 230, 34);
+    _environment_route_point(26, 245, 40);
+    _environment_route_point(125, 250, 30);
+
+    _environment_route(false);
+    _environment_route_point(38, 18, 10);
+    _environment_route_point(118, 22, 8);
+    _environment_route_point(135, 57, 18);
+
+    _flowPoint(55, 53, 25, 60);
+    _flowPoint(180, 252, 50, -110);
+    _flowPoint(332, 24, 30, 85);
+    _flowPoint(302, 112, 35, 85);
+    _flowPoint(80, 105, 23, -135);
+
+    _flowPoint(222, 188, 26, 80);
+    _flowPoint(210, 148, 35, -60);
+    _flowPoint(173, 198, 24, 130);
+    _flowPoint(29, 189, 16, 70);
+
+    // ===== ENVIRONMENT: normal 2
+    _environment(STD_RANDOMNESS);
+
+    _environment_route(false);
+    _environment_route_point(121, 217, 10);
+    _environment_route_point(143, 105, 40);
+    _environment_route_point(238, 104, 30);
+    _environment_route_point(256, 152, 6);
+    _environment_route_point(303, 143, 4);
+    _environment_route_point(340, 118, 35);
+    _environment_route_point(344, 100, 10);
+
+    _flowPoint(315, 219, 60, 170);
+    _flowPoint(308, 179, 27, 140);
+    _flowPoint(21, 183, 20, 40);
+    _flowPoint(62, 115, 32, -103);
+    _flowPoint(82, 25, 37, -25);
+    _flowPoint(86, 154, 20, 45);
+    _flowPoint(191, 145, 20, -100);
+    _flowPoint(216, 189, 22, 70);
+    _flowPoint(165, 142, 20, -130);
+    _flowPoint(305, 102, 23, 40);
+    _flowPoint(178, 192, 29, 140);
+
+    _environment_route(false);
+    _environment_route_point(340, 28, 6);
+    _environment_route_point(336, 51, 6);
+    _environment_route_point(242, 70, 10);
+    _environment_route_point(239, 103, 15);
+
+    // ===== ENVIRONMENT: normal 3
+    _environment(STD_RANDOMNESS);
+
+    _environment_route(false);
+    _environment_route_point(343, 102, 18);
+    _environment_route_point(311, 140, 20);
+    _environment_route_point(295, 147, 4);
+    _environment_route_point(255, 154, 6);
+    _environment_route_point(240, 108, 20);
+    _environment_route_point(142, 104, 30);
+    _environment_route_point(103, 68, 10);
+    _environment_route_point(47, 96, 15);
+    _environment_route_point(11, 158, 20);
+
+    _environment_route(false);
+    _environment_route_point(340, 24, 10);
+    _environment_route_point(337, 51, 6);
+    _environment_route_point(238, 75, 10);
+    _environment_route_point(140, 87, 15);
+
+    _environment_route(false);
+    _environment_route_point(21, 12, 5);
+    _environment_route_point(130, 16, 6);
+    _environment_route_point(139, 62, 10);
+    _environment_route_point(110, 74, 10);
+
+    _environment_route(false);
+    _environment_route_point(50, 240, 15);
+    _environment_route_point(132, 183, 10);
+    _environment_route_point(138, 124, 10);
+
+    _flowPoint(220, 188, 25, 20);
+    _flowPoint(217, 145, 25, -60);
+    _flowPoint(64, 126, 30, 175);
+    _flowPoint(36, 182, 30, 40);
+    _flowPoint(294, 116, 30, 60);
+    _flowPoint(84, 91, 20, -140);
+    _flowPoint(94, 41, 24, -50);
+    _flowPoint(302, 182, 24, 135);
+    _flowPoint(339, 190, 20, 140);
+    _flowPoint(341, 160, 18, -130);
+    _flowPoint(46, 35, 15, -50);
 
 }
 
@@ -641,6 +827,8 @@ void _init_values() {
  *    ##       ##     ## ##   ### ##    ##    ##     ##  ##     ## ##   ### ##    ##
  *    ##        #######  ##    ##  ######     ##    ####  #######  ##    ##  ######
  */
+
+Vector getEstimatedPosition();
 
 // ========== COMPUTATION ==========
 
@@ -696,6 +884,14 @@ double abs_double(double value) {
     return value >= 0 ? value : -value;
 }
 
+bool isInArea(Vector point, Area area) {
+    return area.xa <= point.x && area.xb >= point.x && area.ya <= point.y && area.yb >= point.y;
+}
+
+bool isInRect(Vector point, int xa, int ya, int xb, int yb) {
+    return isInArea(point, new_area(xa, ya, xb, yb));
+}
+
 // =========== COLORS ============
 
 /*bool isYellowRight() { return CSRight_R > 200 && CSRight_G > 200 && CSRight_B < 50; }
@@ -722,72 +918,60 @@ bool isOrangeLeft() {
 bool isOrange() { return isOrangeRight() || isOrangeLeft(); }*/
 
 bool isOrangeRight() {
-    return (((CSRight_R > 188 - 10) && (CSRight_R < 217 + 10)) && ((CSRight_G > 105 - 10) && (CSRight_G < 121 + 10)) &&
-            ((CSRight_B > 52 - 10) && (CSRight_B < 61 + 10)));
+    return (((CSRight_R > 204 - 10) && (CSRight_R < 235 + 10)) && ((CSRight_G > 163 - 10) && (CSRight_G < 186 + 10)) &&
+            ((CSRight_B > 0 - 10) && (CSRight_B < 0 + 10)));
 }
 
 bool isOrangeLeft() {
-    return (((CSLeft_R > 188 - 10) && (CSLeft_R < 217 + 10)) && ((CSLeft_G > 105 - 10) && (CSLeft_G < 121 + 10)) &&
-            ((CSLeft_B > 52 - 10) && (CSLeft_B < 61 + 10)));
+    return (((CSLeft_R > 204 - 10) && (CSLeft_R < 235 + 10)) && ((CSLeft_G > 163 - 10) && (CSLeft_G < 186 + 10)) &&
+            ((CSLeft_B > 0 - 10) && (CSLeft_B < 0 + 10)));
 }
 
 bool isOrange() { return (isOrangeLeft() || isOrangeRight()); }
 
 bool isGreyRight() {
-    return (((CSRight_R > 140 - 10) && (CSRight_R < 161 + 10)) && ((CSRight_G > 145 - 10) && (CSRight_G < 166 + 10)) &&
-            ((CSRight_B > 189 - 10) && (CSRight_B < 215 + 10)));
+    return (((CSRight_R > 133 - 10) && (CSRight_R < 153 + 10)) && ((CSRight_G > 141 - 10) && (CSRight_G < 161 + 10)) &&
+            ((CSRight_B > 187 - 10) && (CSRight_B < 207 + 10)));
 }
 
 bool isGreyLeft() {
-    return (((CSLeft_R > 140 - 10) && (CSLeft_R < 161 + 10)) && ((CSLeft_G > 145 - 10) && (CSLeft_G < 166 + 10)) &&
-            ((CSLeft_B > 189 - 10) && (CSLeft_B < 215 + 10)));
+    return (((CSLeft_R > 133 - 10) && (CSLeft_R < 153 + 10)) && ((CSLeft_G > 141 - 10) && (CSLeft_G < 161 + 10)) &&
+            ((CSLeft_B > 187 - 10) && (CSLeft_B < 207 + 10)));
 }
 
 bool isGrey() { return (isGreyLeft() || isGreyRight()); }
 
-bool isDarkredRight() {
-    return (((CSRight_R > 151 - 10) && (CSRight_R < 176 + 10)) && ((CSRight_G > 0 - 10) && (CSRight_G < 0 + 10)) &&
+bool isYellowRight() {
+    return (((CSRight_R > 204 - 10) && (CSRight_R < 235 + 10)) && ((CSRight_G > 217 - 10) && (CSRight_G < 248 + 10)) &&
             ((CSRight_B > 0 - 10) && (CSRight_B < 0 + 10)));
 }
 
-bool isDarkredLeft() {
-    return (((CSLeft_R > 151 - 10) && (CSLeft_R < 176 + 10)) && ((CSLeft_G > 0 - 10) && (CSLeft_G < 0 + 10)) &&
-            ((CSLeft_B > 0 - 10) && (CSLeft_B < 0 + 10)));
-}
-
-bool isDarkred() { return (isDarkredLeft() || isDarkredRight()); }
-
-bool isYellowRight() {
-    return (((CSRight_R > 202 - 10) && (CSRight_R < 235 + 10)) && ((CSRight_G > 215 - 10) && (CSRight_G < 248 + 10)) &&
-            ((CSRight_B > 1 - 10) && (CSRight_B < 9 + 10)));
-}
-
 bool isYellowLeft() {
-    return (((CSLeft_R > 202 - 10) && (CSLeft_R < 235 + 10)) && ((CSLeft_G > 215 - 10) && (CSLeft_G < 248 + 10)) &&
-            ((CSLeft_B > 1 - 10) && (CSLeft_B < 9 + 10)));
+    return (((CSLeft_R > 204 - 10) && (CSLeft_R < 235 + 10)) && ((CSLeft_G > 217 - 10) && (CSLeft_G < 248 + 10)) &&
+            ((CSLeft_B > 0 - 10) && (CSLeft_B < 0 + 10)));
 }
 
 bool isYellow() { return (isYellowLeft() || isYellowRight()); }
 
 bool isBlackRight() {
-    return (((CSRight_R > 30 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 39 + 10)) &&
-            ((CSRight_B > 30 - 10) && (CSRight_B < 39 + 10)));
+    return (((CSRight_R > 29 - 10) && (CSRight_R < 39 + 10)) && ((CSRight_G > 29 - 10) && (CSRight_G < 39 + 10)) &&
+            ((CSRight_B > 29 - 10) && (CSRight_B < 39 + 10)));
 }
 
 bool isBlackLeft() {
-    return (((CSLeft_R > 30 - 10) && (CSLeft_R < 39 + 10)) && ((CSLeft_G > 30 - 10) && (CSLeft_G < 39 + 10)) &&
-            ((CSLeft_B > 30 - 10) && (CSLeft_B < 39 + 10)));
+    return (((CSLeft_R > 29 - 10) && (CSLeft_R < 39 + 10)) && ((CSLeft_G > 29 - 10) && (CSLeft_G < 39 + 10)) &&
+            ((CSLeft_B > 29 - 10) && (CSLeft_B < 39 + 10)));
 }
 
 bool isBlack() { return (isBlackLeft() || isBlackRight()); }
 
 bool isDarkBlueRight() {
-    return (((CSRight_R > 1 - 10) && (CSRight_R < 1 + 10)) && ((CSRight_G > 150 - 10) && (CSRight_G < 170 + 10)) &&
+    return (((CSRight_R > 0 - 10) && (CSRight_R < 0 + 10)) && ((CSRight_G > 150 - 10) && (CSRight_G < 171 + 10)) &&
             ((CSRight_B > 255 - 10) && (CSRight_B < 255 + 10)));
 }
 
 bool isDarkBlueLeft() {
-    return (((CSLeft_R > 1 - 10) && (CSLeft_R < 1 + 10)) && ((CSLeft_G > 150 - 10) && (CSLeft_G < 170 + 10)) &&
+    return (((CSLeft_R > 0 - 10) && (CSLeft_R < 0 + 10)) && ((CSLeft_G > 150 - 10) && (CSLeft_G < 171 + 10)) &&
             ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
 }
 
@@ -830,12 +1014,12 @@ bool isBlueLeft() {
 bool isBlue() { return (isBlueLeft() || isBlueRight()); }
 
 bool isVioletRight() {
-    return (((CSRight_R > 232 - 10) && (CSRight_R < 255 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 41 + 10)) &&
+    return (((CSRight_R > 232 - 10) && (CSRight_R < 250 + 10)) && ((CSRight_G > 30 - 10) && (CSRight_G < 41 + 10)) &&
             ((CSRight_B > 255 - 10) && (CSRight_B < 255 + 10)));
 }
 
 bool isVioletLeft() {
-    return (((CSLeft_R > 232 - 10) && (CSLeft_R < 255 + 10)) && ((CSLeft_G > 30 - 10) && (CSLeft_G < 41 + 10)) &&
+    return (((CSLeft_R > 232 - 10) && (CSLeft_R < 250 + 10)) && ((CSLeft_G > 30 - 10) && (CSLeft_G < 41 + 10)) &&
             ((CSLeft_B > 255 - 10) && (CSLeft_B < 255 + 10)));
 }
 
@@ -868,7 +1052,15 @@ bool shouldCollect() {
         // always collect superobject
         return true;
     }
-    return loadedColor[index] < POLICY_COLLECT;
+    int futureFreeSpace = 6 - LoadedObjects - 1;
+    int needToCollect = 3*POLICY_COLLECT
+                        - min(loadedColor[0], POLICY_COLLECT)
+                        - min(loadedColor[1], POLICY_COLLECT)
+                        - min(loadedColor[2], POLICY_COLLECT);
+    if (loadedColor[index] < POLICY_COLLECT)
+        needToCollect -= 1;
+    return futureFreeSpace >= needToCollect
+           && (!isFollowingSuperobject || LoadedObjects <= 4);
 }
 
 void registerCollect() {
@@ -879,6 +1071,8 @@ void registerCollect() {
         loadedColor[1]++;
     } else if (isBlue()) {
         loadedColor[2]++;
+    } else if (isViolet()) {
+        loadedSuperobject++;
     }
 }
 
@@ -887,6 +1081,7 @@ void registerDeposit() {
     loadedColor[0] = 0;
     loadedColor[1] = 0;
     loadedColor[2] = 0;
+    loadedSuperobject = 0;
 }
 
 bool seesObstacleLeft() {
@@ -918,8 +1113,25 @@ bool shouldDeposit() {
     return LoadedObjects > 0;
 }
 
+bool wantsDeposit() {
+    return LoadedObjects >= 6
+    || (LoadedObjects >= 4
+        && loadedColor[0] >= POLICY_COLLECT && loadedColor[1] >= POLICY_COLLECT && loadedColor[2] >= POLICY_COLLECT
+                  && loadedSuperobject >= 1);
+}
+
 bool canDeposit() {
     return isOrangeLeft() && isOrangeRight();
+}
+
+bool isInFastArea() {
+    Vector pos = getEstimatedPosition();
+    for (int i = 0; i < _index_area; i++) {
+        if (isInArea(pos, AREAS[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ========== POSITION ===========
@@ -1040,19 +1252,24 @@ void generateSuperobjectRoute() {
     int bestSuperobjectIndex = NONE;
     double bestDistance = 0;
 
-    for (int index = 0; index < superobjectCount; index++) {
-        Vector superobject = superobjects[index];
+    if (LoadedObjects <= 5) {
+        for (int index = 0; index < superobjectCount; index++) {
+            Vector superobject = superobjects[index];
 
-        if (vector_distanceTo(position, superobject) <= SUPEROBJECT_VISION_DISTANCE
-            && isNotObstructed(position, superobject)) {
-            double distance = vector_distanceTo(position, superobject);
-            if (bestSuperobjectIndex == NONE || distance < bestDistance) {
-                bestSuperobjectIndex = index;
-                bestDistance = distance;
+            if (vector_distanceTo(position, superobject) <= SUPEROBJECT_VISION_DISTANCE
+                && isNotObstructed(position, superobject)) {
+                double distance = vector_distanceTo(position, superobject);
+                if (bestSuperobjectIndex == NONE || distance < bestDistance) {
+                    bestSuperobjectIndex = index;
+                    bestDistance = distance;
+                }
             }
         }
     }
     if (bestSuperobjectIndex != NONE) {
+        if (bestSuperobjectIndex != superobjectIndex) {
+            lastDecidedForSuperobject = Time;
+        }
         isFollowingSuperobject = true;
         superobjectFlowLine = new_FlowLine(
                 new_Anchor(position, SMALL_RADIUS),
@@ -1123,6 +1340,8 @@ void steerWithAngle(double steerAngle) {
     int speed;
     if (isGrey()) {
         speed = 5;
+    } else if (isInFastArea() && !isFollowingSuperobject) {
+        speed = min(STD_SPEED * 2, 5);
     } else {
         speed = STD_SPEED;
     }
@@ -1251,13 +1470,16 @@ Vector influenceByFlowPoint(const Vector position, const FlowPoint flowPoint) {
         flowDirection = direction_mirrorWith(direction_invert(flowDirection), flowPoint->direction);
     }*/
 
-    double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
+    double distance = vector_distanceTo(flowPoint.point, position);
+    double d = distance / flowPoint.radius;
     double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
     double weight = 1 - pow(2.0, -d * d);
-    weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
+    //weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
+    weight *= (-relativeAngle) / M_PI + 1;
     Direction pullDirection = direction_weightedAverageWith(flowPoint.direction, toFlowPoint, weight);
 
-    return vector_radial(pullDirection, 1.0);
+    double size = 1 / (distance / 10 + 1);
+    return vector_radial(pullDirection, size);
 }
 
 Vector influenceByFlowPointWithEnd(const Vector position, const FlowPoint flowPoint, const FlowLine flowLine) {
@@ -1273,7 +1495,8 @@ Vector influenceByFlowPointWithEnd(const Vector position, const FlowPoint flowPo
 
     double projectionDistance = vector_distanceTo(flowPoint.point, flowLine.pb.point);
     weight = toRange(projectionDistance / flowLine.pb.radius - 1, 0.0, 1.0);
-    Direction final = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection, weight);
+    Direction final = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection,
+                                                    weight);
 
     return vector_radial(final, 1.0);
 }
@@ -1309,6 +1532,13 @@ Vector influenceRandom(double distanceToNearestFlowPoint) {
     return vector_radial(lastRandomDirection, getCurrentEnv()->randomnessSize * randomForce);
 }
 
+Vector influenceRandomNearSuperobject(double distanceToSuperobject) {
+    int offset = randn(RANDOM_VECTOR_STEP_DEVIATION * 2) - RANDOM_VECTOR_STEP_DEVIATION; // offset in degrees
+    lastRandomDirection = direction_plus(lastRandomDirection, direction_fromDegrees(offset));
+    double randomForce = max(0, 4.8 / (distanceToSuperobject + 2) - 0.4);
+    return vector_radial(lastRandomDirection, randomForce);
+}
+
 Vector influenceByDiscreteFlowPoint(const Vector position, FlowPoint flowPoint) {
     return vector_radial(flowPoint.direction,
                          DISCRETE_FLOWPOINT_FORCE *
@@ -1327,9 +1557,9 @@ Vector influenceByDiscreteFlowPoints(const Vector position) {
 
 Vector influenceByRoute(const Vector position, FlowRoute *route) {
     FlowPointAndLine result = calculateNearestFlowRoutePoint(position, route);
-    Vector lineBPoint =result.line.pb.point;
-    Vector lastRoutePoint = route->points[route->count-1].point;
-    if (lineBPoint.x == lastRoutePoint.x && lineBPoint.y == lastRoutePoint.y) {
+    Vector lineBPoint = result.line.pb.point;
+    Vector lastRoutePoint = route->points[route->count - 1].point;
+    if (route->withEnd && lineBPoint.x == lastRoutePoint.x && lineBPoint.y == lastRoutePoint.y) {
         return influenceByFlowPointWithEnd(position, result.point, result.line);
     }
     return influenceByFlowPoint(position, result.point);
@@ -1360,7 +1590,8 @@ Vector calculateSuperobjectFlowlineMoveVector(Vector position) {
     FlowPoint flowPoint = nearestFlowPointOnFlowLine(flowLine, position);
     Direction toFlowPoint = vector_directionTo(position, flowPoint.point);
 
-    double d = vector_distanceTo(flowPoint.point, position) / flowPoint.radius;
+    double distance = vector_distanceTo(flowPoint.point, position);
+    double d = distance / flowPoint.radius;
     double relativeAngle = direction_difference(direction_invert(flowPoint.direction), toFlowPoint);
     double weight = 1 - pow(2.0, -d * d);
     weight *= pow(cos(relativeAngle / 2), 1.0 / 2);
@@ -1368,10 +1599,10 @@ Vector calculateSuperobjectFlowlineMoveVector(Vector position) {
 
     double projectionDistance = vector_distanceTo(flowPoint.point, flowLine.pb.point);
     weight = toRange(projectionDistance / flowLine.pb.radius - 1, 0, 1);
-    Direction final = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection,
-                                                    weight);
+    Direction target = direction_weightedAverageWith(vector_directionTo(position, flowLine.pb.point), pullDirection,
+                                                     weight);
 
-    return vector_radial(final, 1.0);
+    return vector_plus(vector_radial(target, 1.0), influenceRandom(distance));
 }
 
 /***
@@ -1398,7 +1629,7 @@ void init() {
         lastPosition = estimatedPosition = getCurrentPosition();
         lastDirection = estimatedDirection = getCurrentDirection();
 
-        addEnvToStack(0);
+        setBottomEnv(2);
     }
 }
 
@@ -1422,8 +1653,8 @@ int doStates() {
         mustRemainCollecting = true;
         registerCollect();
         if (isViolet()) stopFollowingSuperobject();
-        if (LoadedObjects >= 6) {
-            addEnvToStack(&ENVIRONMENTS[1]);
+        if (wantsDeposit()) {
+            depositEnvIndex = 0;
         }
         stop();
         return ACTION_COLLECT;
@@ -1451,7 +1682,7 @@ int doStates() {
     // Deposit
     if (shouldDeposit() && canDeposit()) {
         depositingTime = DEPOSITING_TIME;
-        if (LoadedObjects >= 6) popEnvStack();
+        depositEnvIndex = NONE;
         registerDeposit();
         stop();
         return ACTION_DEPOSIT;
@@ -1470,6 +1701,9 @@ int doStates() {
         generateSuperobjectRoute();
     }
     if (isFollowingSuperobject) {
+        if (Time - lastDecidedForSuperobject > 60) {
+            stopFollowingSuperobject();
+        }
         Vector moveVector = calculateSuperobjectFlowlineMoveVector(position);
         Vector target = vector_plus(position, moveVector);
         steerTo(target);
@@ -1492,6 +1726,20 @@ int doStates() {
     return ACTION_NORMAL;
 }
 
+void switchEnvIfNeeded() {
+    Vector pos = getEstimatedPosition();
+    if (isInRect(pos, 3, 165, 34, 144)) {
+        setBottomEnv(1);
+    } else if (isInRect(pos, 166, 209, 80, 270)) {
+        setBottomEnv(2);
+    } else if (isInRect(pos, 360, 90, 324, 112)) {
+        setBottomEnv(3);
+    }
+    if ((Time >= 480 - 17) && shouldDeposit()) {
+        depositEnvIndex = 0;
+    }
+}
+
 void Game0() {}
 
 void Game1() {
@@ -1507,6 +1755,7 @@ void Game1() {
 
     registerSuperobject();
     observePosition();
+    switchEnvIfNeeded();
 
     lastState = doStates();
     debug1 = lastState;
@@ -1553,8 +1802,9 @@ char info[1024];
 
 DLL_EXPORT char *GetDebugInfo() {
     sprintf(info,
-            "debug1=%d;debug2=%d;lastState=%d;estPosX=%d;estPosY=%d;estDir=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
-            debug1, debug2, lastState, estPosX(), estPosY(), estDir(), Duration, SuperDuration, bGameEnd, CurAction,
+            "env=%d;debug1=%d;debug2=%d;lastState=%d;estPosX=%d;estPosY=%d;estDir=%d;Duration=%d;SuperDuration=%d;bGameEnd=%d;CurAction=%d;CurGame=%d;SuperObj_Num=%d;SuperObj_X=%d;SuperObj_Y=%d;Teleport=%d;LoadedObjects=%d;US_Front=%d;US_Left=%d;US_Right=%d;CSLeft_R=%d;CSLeft_G=%d;CSLeft_B=%d;CSRight_R=%d;CSRight_G=%d;CSRight_B=%d;PositionX=%d;PositionY=%d;TM_State=%d;Compass=%d;Time=%d;WheelLeft=%d;WheelRight=%d;LED_1=%d;MyState=%d;",
+            getCurrentEnvIndex(), debug1, debug2, lastState, estPosX(), estPosY(), estDir(), Duration, SuperDuration,
+            bGameEnd, CurAction,
             CurGame, SuperObj_Num, SuperObj_X,
             SuperObj_Y,
             Teleport,
