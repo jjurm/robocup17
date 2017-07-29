@@ -135,18 +135,18 @@ typedef struct {
 typedef struct {
     bool withEnd;
     int count;
-    Anchor points[15];
+    Anchor points[25];
 } FlowRoute;
 
 typedef struct {
     double randomnessSize;
     int anchorCount;
-    Anchor anchors[30];
-    FlowLine flowLines[30];
+    Anchor anchors[20];
+    FlowLine flowLines[20];
     int flowPointCount;
-    FlowPoint flowPoints[25];
+    FlowPoint flowPoints[50];
     int routeCount;
-    FlowRoute flowRoutes[10];
+    FlowRoute flowRoutes[15];
 } Environment;
 
 typedef struct {
@@ -209,6 +209,7 @@ Direction vector_directionTo(const Vector A, Vector B) {
 }
 
 Vector vector_plus(Vector A, Vector B) {
+    if (B.x == 0 && B.y == 0) return A;
     return new_vector(A.x + B.x, A.y + B.y);
 }
 
@@ -378,6 +379,7 @@ int AI_SensorNum = 13;
 #define ACTION_OBSTACLE_AVOIDING 31
 #define ACTION_FOLLOW_ROUTE 41
 #define ACTION_FOLLOW_SUPEROBJECT 61
+#define ACTION_REVERSING 71
 #define ACTION_NORMAL 1
 
 int MIN_DEP_LOADED_OBJECTS = 4;
@@ -398,10 +400,10 @@ int ROBOT_WIDTH = 15;
  *  2 - space for 2 of each
  */
 int POLICY_COLLECT = 1;
-double SUPEROBJECT_VISION_DISTANCE = 140;
+double SUPEROBJECT_VISION_DISTANCE = 200;
 
-double BORDER_DISTANCE = 20;
-double COEFF_K = 16;
+double BORDER_DISTANCE = 12;
+double COEFF_K = 6;
 double DISCRETE_FLOWPOINT_FORCE = 2.0;
 int RANDOM_VECTOR_STEP_DEVIATION = 20; // degrees
 double RANDOM_VECTOR_SIZE = 0.4;
@@ -432,6 +434,7 @@ int avoidingObstacleTime = 0;
 int avoidingBorderTime = 0;
 Vector *avoidingBorderPos;
 int depositingTime = 0;
+int reversingTime = 0;
 int currentRoute = NONE;
 int currentRoutePoint = NONE;
 
@@ -455,6 +458,13 @@ int lastState = 0;
 int debug1 = -777;
 int debug2 = -777;
 
+//========== REAL PART ==========
+int kanyar = 0;
+int goingtodeposit = 0;
+int start = 0;
+int foundDeposit = 0;
+int justdeposited = 0;
+
 /***
  *    ########  ########  ######## ########  ######## ######## #### ##    ## ######## ########
  *    ##     ## ##     ## ##       ##     ## ##       ##        ##  ###   ## ##       ##     ##
@@ -467,7 +477,7 @@ int debug2 = -777;
 
 bool _was_init = false;
 
-#define AREAS_COUNT 1
+#define AREAS_COUNT 10
 Area AREAS[AREAS_COUNT];
 int _index_area = 0;
 
@@ -476,7 +486,7 @@ void _area(int x1, int y1, int x2, int y2) {
 }
 
 // ========== ENVIRONMENTS ==========
-#define ENVIRONMENT_COUNT 4
+#define ENVIRONMENT_COUNT 3
 Environment ENVIRONMENTS[ENVIRONMENT_COUNT];
 
 int environment_count = 0;
@@ -554,7 +564,7 @@ void _routePoint(int route, int x, int y) {
 }
 
 // ============= WALLS =============
-#define WALLS_COUNT 50
+#define WALLS_COUNT 100
 Wall WALLS[WALLS_COUNT];
 
 int wall_count = 0;
@@ -585,263 +595,308 @@ void _rule_route_point(int x, int y) { // _rule must be defined first
 
 void _init_values() {
 
-    // ===== GLOBAl ========
+    // ===== GLOBAL =========
 
-    //Wall: left dump stone dump stone
-    _wall(99, 89, 99, 160);
-    _wall(99, 160, 70, 159);
-    _wall(70, 159, 70, 171);
-    _wall(70, 171, 30, 169);
-    _wall(30, 169, 29, 198);
-    _wall(29, 198, 0, 198);
-    _wall(0, 198, 0, 168);
-    _wall(0, 168, 28, 168);
-    _wall(28, 168, 28, 160);
-    _wall(28, 160, 70, 160);
-    _wall(70, 160, 70, 130);
-    _wall(70, 130, 89, 130);
-    _wall(89, 130, 89, 89);
-    _wall(89, 89, 99, 89);
+    //Wall: left stone
+    _wall(0, 94, 40, 94);
+    _wall(40, 94, 39, 104);
+    _wall(39, 104, 0, 104);
+    _wall(0, 104, 0, 94);
 
-    //Wall: up lefter stone
-    _wall(148, 270, 148, 231);
-    _wall(148, 231, 158, 231);
-    _wall(158, 231, 158, 270);
-    _wall(158, 270, 148, 270);
+    //Wall: left down stone strap trap
+    _wall(40, 0, 50, 0);
+    _wall(50, 0, 50, 40);
+    _wall(50, 40, 70, 40);
+    _wall(70, 40, 70, 60);
+    _wall(70, 60, 100, 60);
+    _wall(100, 60, 100, 90);
+    _wall(100, 90, 70, 90);
+    _wall(70, 90, 70, 70);
+    _wall(70, 70, 40, 70);
+    _wall(40, 70, 40, 0);
 
-    //Wall: up righter stone
-    _wall(198, 270, 198, 231);
-    _wall(198, 231, 208, 231);
-    _wall(208, 231, 208, 270);
-    _wall(208, 270, 198, 270);
+    //Wall: down doublestone stone
+    _wall(140, 60, 220, 60);
+    _wall(220, 60, 220, 30);
+    _wall(220, 30, 230, 30);
+    _wall(230, 30, 230, 70);
+    _wall(230, 70, 140, 70);
+    _wall(140, 70, 140, 60);
 
-    //Wall: left, stone dump stone
-    _wall(0, 40, 40, 40);
-    _wall(40, 40, 40, 30);
-    _wall(40, 30, 70, 30);
-    _wall(70, 30, 70, 40);
-    _wall(70, 40, 108, 40);
-    _wall(108, 40, 108, 50);
-    _wall(108, 50, 70, 50);
-    _wall(70, 50, 70, 60);
-    _wall(70, 60, 40, 60);
-    _wall(40, 60, 40, 50);
-    _wall(40, 50, 0, 50);
-    _wall(0, 50, 0, 40);
-
-    // Wall: right, stone and dump
-    _wall(289, 159, 330, 159);
-    _wall(330, 159, 330, 169);
-    _wall(330, 169, 360, 169);
-    _wall(360, 169, 360, 198);
-    _wall(360, 198, 330, 198);
-    _wall(330, 198, 330, 169);
-    _wall(330, 169, 289, 169);
-    _wall(289, 169, 289, 159);
-
-    //Wall: right three stones
-    _wall(269, 130, 269, 90);
-    _wall(269, 90, 279, 90);
-    _wall(279, 90, 279, 80);
-    _wall(279, 80, 320, 80);
-    _wall(320, 80, 320, 70);
-    _wall(320, 70, 360, 70);
-    _wall(360, 70, 360, 80);
-    _wall(360, 80, 320, 80);
-    _wall(320, 80, 320, 90);
-    _wall(320, 90, 279, 90);
-    _wall(279, 90, 279, 130);
-    _wall(279, 130, 269, 130);
-    _wall(269, 130, 269, 130);
-
-    //Wall: right down, 1 stone
+    //Wall: down stone
     _wall(310, 0, 320, 0);
     _wall(320, 0, 320, 40);
     _wall(320, 40, 310, 40);
     _wall(310, 40, 310, 0);
 
-    //Wall: tower in the swamp area and swamp blocker
-    _wall(163, 197, 163, 171);
-    _wall(163, 171, 192, 171);
-    _wall(192, 171, 192, 199);
-    _wall(192, 199, 165, 198);
-    _wall(165, 198, 219, 141);
-    _wall(219, 141, 163, 197);
+    //Wall: down swamp cross
+    _wall(231, 30, 250, 0);
+
+    //Wall: tower stone trap trap stones around up right deposite)
+    _wall(170, 200, 175, 187);
+    _wall(175, 187, 195, 187);
+    _wall(195, 187, 195, 195);
+    _wall(195, 195, 258, 195);
+    _wall(258, 195, 282, 158);
+    _wall(282, 158, 291, 165);
+    _wall(291, 165, 275, 188);
+    _wall(275, 188, 297, 206);
+    _wall(297, 206, 314, 181);
+    _wall(314, 181, 324, 187);
+    _wall(324, 187, 305, 216);
+    _wall(305, 216, 295, 244);
+    _wall(295, 244, 265, 244);
+    _wall(265, 244, 265, 228);
+    _wall(265, 228, 234, 227);
+    _wall(234, 227, 234, 207);
+    _wall(234, 207, 195, 207);
+    _wall(195, 207, 190, 209);
+    _wall(190, 209, 177, 213);
+    _wall(177, 213, 170, 200);
+
+    //Wall: up swamp cross
+    _wall(127, 181, 170, 200);
+
+    //Wall: right trap
+
+    _wall(330, 70, 360, 70);
+    _wall(360, 70, 360, 100);
+    _wall(360, 100, 330, 100);
+    _wall(330, 100, 330, 70);
+
+    //Wall: up stone
+    _wall(110, 230, 120, 230);
+    _wall(120, 230, 121, 270);
+    _wall(121, 270, 110, 270);
+    _wall(110, 270, 110, 230);
 
     //Quick areas
-    _area(104, 205, 157, 54);
-    _area(104, 80, 302, 0);
-    _area(236, 226, 270, 66);
+    _area(0, 175, 140, 110);
+    _area(240, 143, 324, 45);
+    _area(320, 175, 357, 99);
+
+    _area(112, 114, 137, 73);
 
     // ===== ENVIRONMENT: deposit
     _environment(0.0);
 
-    _environment_route(false);
-    _environment_route_point(23, 144, 8);
-    _environment_route_point(72, 76, 8);
-    _environment_route_point(130, 68, 12);
-    _environment_route_point(127, 27, 10);
-    _environment_route_point(20, 15, 4);
+    _environment_route(true);
+    _environment_route_point(61, 220, 50);
+    _environment_route_point(66, 108, 10);
+    _environment_route_point(52, 86, 10);
+    _environment_route_point(18, 71, 5);
+    _environment_route_point(12, 21, 5);
 
     _environment_route(false);
-    _environment_route_point(133, 118, 10);
-    _environment_route_point(282, 59, 6);
-    _environment_route_point(338, 53, 4);
-    _environment_route_point(342, 20, 4);
+    _environment_route_point(213, 33, 20);
+    _environment_route_point(117, 35, 20);
+    _environment_route_point(119, 108, 10);
+    _environment_route_point(66, 108, 10);
+    _environment_route_point(51, 87, 10);
 
-    _environment_route(false);
-    _environment_route_point(47, 224, 15);
-    _environment_route_point(180, 219, 8);
-    _environment_route_point(179, 252, 4);
+    _environment_route(true);
+    _environment_route_point(140, 221, 4);
+    _environment_route_point(163, 249, 15);
+    _environment_route_point(281, 262, 4);
+    _environment_route_point(340, 248, 4);
+    _environment_route_point(344, 180, 6);
+    _environment_route_point(327, 163, 10);
+    _environment_route_point(312, 161, 4);
+    _environment_route_point(295, 184, 4);
 
-    _environment_route(false);
-    _environment_route_point(337, 116, 6);
-    _environment_route_point(255, 164, 6);
-    _environment_route_point(255, 218, 8);
-    _environment_route_point(174, 223, 8);
-    _environment_route_point(178, 249, 6);
+    _environment_route(true);
+    _environment_route_point(149, 155, 30);
+    _environment_route_point(241, 120, 30);
+    _environment_route_point(299, 144, 10);
+    _environment_route_point(312, 161, 4);
+    _environment_route_point(295, 184, 4);
 
-    _flowPoint(20, 66, 20, 60);
-    _flowPoint(85, 102, 23, -125);
-    _flowPoint(69, 144, 15, -135);
-    _flowPoint(135, 242, 35, -120);
-    _flowPoint(222, 238, 33, -70);
-    _flowPoint(296, 29, 20, 100);
-    _flowPoint(321, 228, 38, -170);
-    _flowPoint(285, 122, 16, 70);
-    _flowPoint(160, 49, 24, -165);
-    _flowPoint(73, 35, 15, -90);
-    _flowPoint(228, 137, 24, -10);
-    _flowPoint(177, 144, 24, -130);
-    _flowPoint(333, 68, 16, -80);
-    _flowPoint(169, 167, 20, -140);
-    _flowPoint(337, 190, 24, 135);
-    _flowPoint(298,174, 20, 140);
-    _flowPoint(23, 192, 20, 40);
+    _environment_route(true);
+    _environment_route_point(253, 61, 20);
+    _environment_route_point(339, 55, 10);
+    _environment_route_point(342, 19, 5);
+
+    _flowPoint(110, 234, 15, -135);
+    _flowPoint(111, 147, 40, -135);
+    _flowPoint(25, 120, 40, 15);
+    _flowPoint(75, 40, 30, 0);
+    _flowPoint(65, 20, 30, 0);
+    _flowPoint(97, 60, 20, -10);
+    _flowPoint(70, 91, 12, 175);
+    _flowPoint(65, 77, 25, 170);
+    _flowPoint(78, 60, 20, -20);
+    _flowPoint(92, 258, 30, -135);
+    _flowPoint(121, 190, 35, 160);
+    _flowPoint(125, 198, 20, 135);
+    _flowPoint(144, 61, 30, -145);
+    _flowPoint(179, 59, 30, -135);
+    _flowPoint(217, 59, 30, -135);
+    _flowPoint(177, 31, 50, 180);
+    _flowPoint(226, 12, 30, 180);
+
+    _flowPoint(311, 35, 20, 120);
+    _flowPoint(316, 90, 18, 80);
+    _flowPoint(327, 108, 25, 112);
+    _flowPoint(174, 216, 25, 75);
+    _flowPoint(222, 222, 30, 85);
+    _flowPoint(255, 235, 43, 105);
+    _flowPoint(289, 240, 24, 55);
+    _flowPoint(314, 229, 30, 0);
+    _flowPoint(326, 189, 20, -50);
+    _flowPoint(231, 176, 40, -55);
+    _flowPoint(267, 161, 30, -80);
+    _flowPoint(323, 208, 28, 0);
+    _flowPoint(255, 187, 20, -105);
+    _flowPoint(315, 72, 25, -75);
+    _flowPoint(270, 216, 30, 135);
+    _flowPoint(267, 247, 25,65);
+    _flowPoint(270, 247, 25,50);
+    _flowPoint(305, 244, 35, 45);
+    _flowPoint(234, 235, 40, 95);
+    _flowPoint(113, 175, 20, -135);
+    _flowPoint(99, 215, 30, -135);
+    _flowPoint(99, 91, 13, 45);
 
     // ===== ENVIRONMENT: normal 1
     _environment(STD_RANDOMNESS);
 
-    _environment_route(false);
-    _environment_route_point(13, 154, 18);
-    _environment_route_point(66, 77, 8);
-    _environment_route_point(123, 71, 12);
-    _environment_route_point(115, 173, 20);
-    _environment_route_point(22, 230, 34);
-    _environment_route_point(26, 245, 40);
-    _environment_route_point(125, 250, 30);
+    _environment_route(true);
+    _environment_route_point(14, 252, 20);
+    _environment_route_point(75, 220, 25);
+    _environment_route_point(100, 216, 6);
+    _environment_route_point(140, 216, 15);
+    _environment_route_point(176, 257, 21);
+    _environment_route_point(260, 260, 10);
+    _environment_route_point(322, 257, 10);
+    _environment_route_point(342, 211, 12);
+    _environment_route_point(343, 172, 6);
+    _environment_route_point(271, 127, 25);
+    _environment_route_point(147, 127, 40);
+    _environment_route_point(120, 95, 8);
+    _environment_route_point(117, 44, 15);
+    _environment_route_point(139, 17, 15);
+    _environment_route_point(212, 14, 19);
 
     _environment_route(false);
-    _environment_route_point(38, 18, 10);
-    _environment_route_point(118, 22, 8);
-    _environment_route_point(135, 57, 18);
+    _environment_route_point(12, 22, 6);
+    _environment_route_point(18, 73, 4);
+    _environment_route_point(53, 85, 5);
+    _environment_route_point(67, 108, 12);
+    _environment_route_point(108, 106, 18);
 
-    _flowPoint(55, 53, 25, 60);
-    _flowPoint(180, 252, 50, -110);
-    _flowPoint(332, 24, 30, 85);
-    _flowPoint(302, 112, 35, 85);
-    _flowPoint(80, 105, 23, -135);
+    _environment_route(false);
+    _environment_route_point(346, 18, 8);
+    _environment_route_point(339, 52, 8);
+    _environment_route_point(278, 72, 8);
+    _environment_route_point(246, 122, 14);
 
-    _flowPoint(222, 188, 26, 80);
-    _flowPoint(210, 148, 35, -60);
-    _flowPoint(173, 198, 24, 130);
-    _flowPoint(29, 189, 16, 70);
+    _flowPoint(115, 195, 22, 135);
+    _flowPoint(116, 176, 20, -115);
+    _flowPoint(173, 178, 27, -70);
+    _flowPoint(25, 110, 15, 40);
+    _flowPoint(46, 65, 18, 135);
+    _flowPoint(75, 84, 14, 145);
+    _flowPoint(90, 83, 15, 33);
+    _flowPoint(68, 31, 23, -30);
+    _flowPoint(146, 74, 12, 150);
+    _flowPoint(252, 42, 60, 58);
+    _flowPoint(285, 39, 63, 80);
+    _flowPoint(233, 73, 20, 60);
+    _flowPoint(336, 98, 14, 135);
+    _flowPoint(337, 77, 14, -135);
+    _flowPoint(88, 60, 17, -60);
+    _flowPoint(233, 220, 22, 105);
+    _flowPoint(265, 239, 24, 110);
+    _flowPoint(264, 218, 30, 123);
+    _flowPoint(83, 182, 40, 85);
+    _flowPoint(26, 185, 35, 70);
+    _flowPoint(318, 191, 18, 10);
+    _flowPoint(101, 244, 28, -115);
+    _flowPoint(143, 176, 19, -98);
+    _flowPoint(153, 197, 33, 115);
+    _flowPoint(35, 95, 12, -45);
+    _flowPoint(332, 20, 20, 78);
+    _flowPoint(283, 167, 18, -85);
+    _flowPoint(301, 180, 24, -50);
+    _flowPoint(293, 229, 20, 20);
+    _flowPoint(203, 46, 20, -127);
+    _flowPoint(150, 49, 18, -110);
+    _flowPoint(302, 113, 35, 160);
+    _flowPoint(285, 245, 16, 50);
+    _flowPoint(248, 52, 35, 40);
 
     // ===== ENVIRONMENT: normal 2
     _environment(STD_RANDOMNESS);
 
+    //flow from down left deposit to upper part
     _environment_route(false);
-    _environment_route_point(121, 217, 10);
-    _environment_route_point(226, 215, 13);
-    _environment_route_point(268, 259, 27);
-    _environment_route_point(333, 244, 28);
-    _environment_route_point(323, 214, 14);
-    _environment_route_point(261, 188, 10);
-    _environment_route_point(252, 154, 6);
-    _environment_route_point(303, 143, 4);
-    _environment_route_point(340, 118, 35);
-    _environment_route_point(344, 100, 10);
+    _environment_route_point(12, 22, 10);
+    _environment_route_point(18, 72, 8);
+    _environment_route_point(53, 85, 7);
+    _environment_route_point(58, 114, 12);
+    _environment_route_point(30, 191, 18);
 
-    _flowPoint(166, 166, 19, 150);
-    _flowPoint(180, 240, 35, -110);
-    _flowPoint(133, 240, 35, -110);
-    _flowPoint(129, 147, 60, 90);
-    _flowPoint(303, 177, 25, 140);
-    _flowPoint(21, 183, 20, 40);
-    _flowPoint(62, 115, 32, -103);
-    _flowPoint(54, 20, 37, -30);
-    _flowPoint(92, 154, 20, 45);
-    _flowPoint(191, 145, 20, -100);
-    _flowPoint(216, 189, 22, 70);
-    _flowPoint(165, 135, 20, 125);
-    _flowPoint(305, 102, 23, 40);
-    _flowPoint(170, 192, 30, 130);
-    _flowPoint(284, 233, 15, 40);
-    _flowPoint(336, 192, 12, 140);
-    _flowPoint(220, 134, 13, -80);
-    _flowPoint(80, 93, 18, -120);
-    _flowPoint(289, 165, 15, -135);
-    _flowPoint(245, 224, 25, 95);
 
+    //flow from down bonus to up
+    _environment_route(true);
+    _environment_route_point(212, 14, 20);
+    _environment_route_point(194, 35, 15);
+    _environment_route_point(129, 46, 10);
+    _environment_route_point(120, 112, 10);
+    _environment_route_point(30, 191, 25);
+    _environment_route_point(9, 259, 20);
+
+    // /flow from very right via uppper part to up left
+    _environment_route(true);
+    _environment_route_point(343, 172, 6);
+    _environment_route_point(339, 207, 13);
+    _environment_route_point(307, 260, 10);
+    _environment_route_point(260, 260, 6);
+    _environment_route_point(181, 252, 25);
+    _environment_route_point(140, 216, 15);
+    _environment_route_point(100, 216, 6);
+    _environment_route_point(75, 220, 25);
+    _environment_route_point(9, 259, 20);
+
+    //flow from down right deposit to up left
     _environment_route(false);
-    _environment_route_point(340, 28, 6);
-    _environment_route_point(336, 51, 6);
-    _environment_route_point(242, 70, 10);
-    _environment_route_point(239, 103, 15);
-    _environment_route_point(258, 162, 6);
+    _environment_route_point(340, 22, 10);
+    _environment_route_point(337, 53, 10);
+    _environment_route_point(256, 107, 30);
+    _environment_route_point(121, 130, 40);
 
-    _environment_route(false);
-    _environment_route_point(21, 75, 6);
-    _environment_route_point(113, 75, 10);
-    _environment_route_point(248, 103, 13);
-
-    _environment_route(false);
-    _environment_route_point(20, 16, 10);
-    _environment_route_point(125, 17, 8);
-    _environment_route_point(146, 88, 16);
-
-    // ===== ENVIRONMENT: normal 3
-    _environment(STD_RANDOMNESS);
-
-    _environment_route(false);
-    _environment_route_point(343, 102, 18);
-    _environment_route_point(311, 140, 20);
-    _environment_route_point(295, 147, 4);
-    _environment_route_point(255, 154, 6);
-    _environment_route_point(240, 108, 20);
-    _environment_route_point(142, 104, 30);
-    _environment_route_point(103, 68, 10);
-    _environment_route_point(47, 96, 15);
-    _environment_route_point(11, 158, 20);
-
-    _environment_route(false);
-    _environment_route_point(340, 24, 10);
-    _environment_route_point(337, 51, 6);
-    _environment_route_point(238, 75, 10);
-    _environment_route_point(140, 87, 15);
-
-    _environment_route(false);
-    _environment_route_point(21, 12, 5);
-    _environment_route_point(130, 16, 6);
-    _environment_route_point(139, 62, 10);
-    _environment_route_point(110, 74, 10);
-
-    _environment_route(false);
-    _environment_route_point(50, 240, 15);
-    _environment_route_point(132, 183, 10);
-    _environment_route_point(138, 124, 10);
-
-    _flowPoint(220, 188, 25, 20);
-    _flowPoint(217, 145, 25, -60);
-    _flowPoint(64, 126, 30, 175);
-    _flowPoint(36, 182, 30, 40);
-    _flowPoint(294, 116, 30, 60);
-    _flowPoint(84, 91, 20, -140);
-    _flowPoint(94, 41, 24, -50);
-    _flowPoint(302, 182, 24, 135);
-    _flowPoint(339, 190, 20, 140);
-    _flowPoint(341, 160, 18, -130);
-    _flowPoint(46, 35, 15, -50);
+    _flowPoint(297, 181, 30, -53);
+    _flowPoint(182, 178, 20, -90);
+    _flowPoint(84, 50, 18, -18);
+    _flowPoint(62, 30, 20, -10);
+    _flowPoint(97, 63, 18, -18);
+    _flowPoint(230, 12, 20, 180);
+    _flowPoint(260, 20, 20, 90);
+    _flowPoint(248, 51, 40, 65);
+    _flowPoint(258, 49, 35, 75);
+    _flowPoint(237, 74, 20, 80);
+    _flowPoint(125, 194, 22, 160);
+    _flowPoint(152, 179, 20, -80);
+    _flowPoint(166, 179, 20, -65);
+    _flowPoint(132, 176, 10, -80);
+    _flowPoint(129, 252, 30, -65);
+    _flowPoint(128, 235, 20, -75);
+    _flowPoint(331, 70, 18, -160);
+    _flowPoint(293, 238, 18, 82);
+    _flowPoint(155, 60, 19, -137);
+    _flowPoint(45, 62, 16, 125);
+    _flowPoint(72, 84, 14, 120);
+    _flowPoint(28, 95, 18, -40);
+    _flowPoint(284, 167, 18, -65);
+    _flowPoint(248, 183, 30, -115);
+    _flowPoint(207, 180, 25, -110);
+    _flowPoint(245, 217, 18, 100);
+    _flowPoint(321, 185, 12, -10);
+    _flowPoint(318, 152, 28, 30);
+    _flowPoint(116, 170, 10, -155);
+    _flowPoint(338, 126, 30, 75);
+    _flowPoint(196, 59, 24, -145);
+    _flowPoint(96, 87, 18, 35);
 
 }
 
@@ -1125,7 +1180,7 @@ bool seesObstacleRight() {
 }
 
 bool shouldAvoidObstacle() {
-    return seesObstacleLeft() || seesObstacleFront() || seesObstacleRight() || isYellow();
+    return seesObstacleLeft() || seesObstacleFront() || seesObstacleRight() || (LoadedObjects > 1 && isYellow());
 }
 
 bool shouldAvoidBorder(int arean) {
@@ -1317,7 +1372,15 @@ void stopFollowingSuperobject() {
     superobjectIndex = NONE;
 }
 
-// ========== ACTIONS =============
+/***
+ *       ###     ######  ######## ####  #######  ##    ##  ######
+ *      ## ##   ##    ##    ##     ##  ##     ## ###   ## ##    ##
+ *     ##   ##  ##          ##     ##  ##     ## ####  ## ##
+ *    ##     ## ##          ##     ##  ##     ## ## ## ##  ######
+ *    ######### ##          ##     ##  ##     ## ##  ####       ##
+ *    ##     ## ##    ##    ##     ##  ##     ## ##   ### ##    ##
+ *    ##     ##  ######     ##    ####  #######  ##    ##  ######
+ */
 
 void move(int left, int right) {
     WheelLeft = toRangeInt(left, -5, 5);
@@ -1367,14 +1430,15 @@ double getAngleTolerance() {
 
 void steerWithAngle(double steerAngle) {
     int speed;
-    if (isGrey()) {
-        speed = 5;
-    } else if (isInFastArea() && !isFollowingSuperobject) {
+    if (isInFastArea() && !isFollowingSuperobject) {
         speed = min(STD_SPEED * 2, 5);
     } else {
         speed = STD_SPEED;
     }
     if (abs_double(steerAngle) < getAngleTolerance()) {
+        if (isGrey()) {
+            speed = 5;
+        }
         forward(speed);
     } else {
         double k = toDegrees(abs_double(steerAngle)) / 40;
@@ -1658,12 +1722,19 @@ void init() {
         lastPosition = estimatedPosition = getCurrentPosition();
         lastDirection = estimatedDirection = getCurrentDirection();
 
-        setBottomEnv(2);
+        setBottomEnv(1);
     }
 }
 
 int doStates() {
     Vector position = getEstimatedPosition();
+
+    // Collecting
+    if (collectingTime > 0 && (mustRemainCollecting || canCollect())) {
+        collectingTime--;
+        if (collectingTime < 10 && canCollect()) mustRemainCollecting = false;
+        return ACTION_COLLECTING;
+    }
 
     // Depositing
     if (depositingTime > 0) {
@@ -1672,11 +1743,6 @@ int doStates() {
     }
 
     // Collecting
-    if (collectingTime > 0 && (mustRemainCollecting || canCollect())) {
-        collectingTime--;
-        if (collectingTime < 10 && canCollect()) mustRemainCollecting = false;
-        return ACTION_COLLECTING;
-    }
     if (canCollect() && shouldCollect()) {
         collectingTime = 38;
         mustRemainCollecting = true;
@@ -1690,6 +1756,13 @@ int doStates() {
     }
     mustRemainCollecting = false;
     collectingTime = 0;
+
+    // Reverse
+    if (reversingTime > 0) {
+        reversingTime--;
+        forward(-STD_SPEED);
+        return ACTION_REVERSING;
+    }
 
     // Avoid obstacle
     if (avoidingObstacleTime > 0) {
@@ -1711,8 +1784,10 @@ int doStates() {
     // Deposit
     if (shouldDeposit() && canDeposit()) {
         depositingTime = DEPOSITING_TIME;
-        depositEnvIndex = NONE;
+        reversingTime = 8;
         registerDeposit();
+        depositEnvIndex = NONE;
+        setBottomEnv(1);
         stop();
         return ACTION_DEPOSIT;
     }
@@ -1757,19 +1832,15 @@ int doStates() {
 
 void switchEnvIfNeeded() {
     Vector pos = getEstimatedPosition();
-    if (isInRect(pos, 3, 165, 34, 144)) {
+    if (isInRect(pos, 107, 242, 0, 270)) {
         setBottomEnv(1);
-    } else if (isInRect(pos, 166, 209, 80, 270)) {
+    } else if (isInRect(pos, 200, 0, 240, 60)) {
         setBottomEnv(2);
-    } else if (isInRect(pos, 360, 90, 324, 112)) {
-        setBottomEnv(3);
     }
-    if ((Time >= 480 - 17) && shouldDeposit()) {
+    if ((Time >= 480 - 25) && shouldDeposit()) {
         depositEnvIndex = 0;
     }
 }
-
-void Game0() {}
 
 void Game1() {
 
@@ -1795,6 +1866,397 @@ void Game1() {
         LED_1 = 1;
     } else {
         LED_1 = 0;
+    }
+
+}
+
+
+
+void Game0() {
+
+    if (SuperDuration > 0) {
+        SuperDuration--;
+    } else if (Time >= 180 && Time <= 200) {
+        SuperDuration = 49;
+        Duration = 0;
+        CurAction = 17;
+    } else if (Duration > 0) {
+        Duration--;
+    } else if (start == 0) {
+        Duration = 14;
+        CurAction = 1;
+    } else if (start == 1) {
+        Duration = 39;
+        CurAction = 2;
+    } else if (CSLeft_R >= 200 && CSLeft_R <= 255 && CSLeft_G >= 150 && CSLeft_G <= 205 && CSLeft_B >= 0 &&
+               CSLeft_B <= 50 && CSRight_R >= 200 && CSRight_R <= 255 && CSRight_G >= 150 && CSRight_G <= 205 &&
+               CSRight_B >= 0 && CSRight_B <= 50 && (LoadedObjects > 0)) {
+        Duration = 59;
+        CurAction = 3;
+    } else if (justdeposited == 1) {
+        Duration = 0;
+        CurAction = 4;
+    } else if (justdeposited == 2 && Compass < 250 && Compass > 200) {
+        Duration = 9;
+        CurAction = 5;
+    } else if (CSRight_R >= 200 && CSRight_R <= 255 && CSRight_G >= 150 && CSRight_G <= 205 && CSRight_B >= 0 &&
+               CSRight_B <= 50 && (goingtodeposit < 10)) {
+        Duration = 0;
+        CurAction = 6;
+    } else if (CSLeft_R >= 200 && CSLeft_R <= 255 && CSLeft_G >= 150 && CSLeft_G <= 205 && CSLeft_B >= 0 &&
+               CSLeft_B <= 50 && (goingtodeposit < 10)) {
+        Duration = 0;
+        CurAction = 7;
+    } else if (CSRight_R >= 190 && CSRight_R <= 255 && CSRight_G >= 210 && CSRight_G <= 255 && CSRight_B >= 0 &&
+               CSRight_B <= 40 && ((LoadedObjects > 0 || (Compass < 170 || Compass > 290)) && goingtodeposit < 2)) {
+        Duration = 3;
+        CurAction = 8;
+    } else if (CSLeft_R >= 190 && CSLeft_R <= 255 && CSLeft_G >= 210 && CSLeft_G <= 255 && CSLeft_B >= 0 &&
+               CSLeft_B <= 40 && ((LoadedObjects > 0 || (Compass < 170 || Compass > 290)) && goingtodeposit < 2)) {
+        Duration = 1;
+        CurAction = 9;
+    } else if (foundDeposit == 1) {
+        Duration = 0;
+        CurAction = 10;
+    } else if (goingtodeposit == 2 && Compass < 50 && Compass > 30) {
+        Duration = 0;
+        CurAction = 11;
+    } else if (goingtodeposit == 3) {
+        Duration = 0;
+        CurAction = 12;
+    } else if (//red//
+            (((CSLeft_R >= 200 && CSLeft_R <= 255 && CSLeft_G >= 20 && CSLeft_G <= 50 && CSLeft_B >= 20 &&
+               CSLeft_B <= 50)
+              ||
+              (CSRight_R >= 200 && CSRight_R <= 255 && CSRight_G >= 20 && CSRight_G <= 50 && CSRight_B >= 20 &&
+               CSRight_B <= 50))
+
+             ||
+
+             //cyan//
+             ((CSLeft_R >= 15 && CSLeft_R <= 50 && CSLeft_G >= 220 && CSLeft_G <= 255 && CSLeft_B >= 220 &&
+               CSLeft_B <= 255)
+              ||
+              (CSRight_R >= 15 && CSRight_R <= 50 && CSRight_G >= 220 && CSRight_G <= 255 && CSRight_B >= 220 &&
+               CSRight_B <= 255))
+
+             ||
+
+
+             //black//
+             ((CSLeft_R >= 14 && CSLeft_R <= 40 && CSLeft_G >= 14 && CSLeft_G <= 40 && CSLeft_B >= 14 && CSLeft_B <= 40)
+              ||
+              (CSRight_R >= 14 && CSRight_R <= 40 && CSRight_G >= 14 && CSRight_G <= 40 && CSRight_B >= 14 &&
+               CSRight_B <= 40)))
+
+
+            &&
+            (LoadedObjects < 6)
+            ) {
+        Duration = 49;
+        CurAction = 13;
+    } else if ((US_Left > 1 && US_Left < 10)) {
+        Duration = 1;
+        CurAction = 14;
+    } else if ((US_Right > 1 && US_Right < 10)) {
+        Duration = 1;
+        CurAction = 15;
+    } else if (US_Front >= 0 && US_Front <= 9) {
+        Duration = 2;
+        CurAction = 16;
+    } else if (goingtodeposit == 1) {
+        Duration = 0;
+        CurAction = 18;
+    } else if (goingtodeposit == 0) {
+        Duration = 0;
+        CurAction = 19;
+    }
+    switch (CurAction) {
+        case 1:
+            WheelLeft = 1;
+            WheelRight = -1;
+            LED_1 = 0;
+            MyState = 0;
+            start = 1;
+
+            break;
+        case 2:
+            WheelLeft = 4;
+            WheelRight = 4;
+            LED_1 = 0;
+            MyState = 0;
+            start = 2;
+
+            break;
+        case 3:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 2;
+            MyState = 0;
+            goingtodeposit = 0;
+
+            justdeposited = 1;
+
+            foundDeposit = 0;
+
+            if (Duration == 1) { LoadedObjects = 0; }
+            break;
+        case 4:
+            WheelLeft = 1;
+            WheelRight = -1;
+            LED_1 = 0;
+            MyState = 0;
+            justdeposited = 2;
+
+            goingtodeposit = 99;
+
+            break;
+        case 5:
+            WheelLeft = 3;
+            WheelRight = 3;
+            LED_1 = 0;
+            MyState = 0;
+            justdeposited = 0;
+
+            goingtodeposit = 0;
+
+            break;
+        case 6:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (LoadedObjects == 0 && goingtodeposit == 0) {
+                WheelLeft = -1;
+
+                WheelRight = -4;
+
+            } else if (LoadedObjects > 0) {
+                WheelLeft = 1;
+
+                WheelRight = 0;
+
+            }
+            break;
+        case 7:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (LoadedObjects == 0 && goingtodeposit == 0) {
+                WheelLeft = -2;
+
+                WheelRight = -4;
+
+            } else if (LoadedObjects > 0) {
+                WheelLeft = 0;
+
+                WheelRight = 1;
+
+            }
+
+            break;
+        case 8:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (goingtodeposit == 0) {
+                WheelLeft = 1;
+
+                WheelRight = -2;
+
+            } else if (goingtodeposit == 1 && (Compass < 40 || Compass > 350)) {
+                WheelLeft = 0;
+
+                WheelRight = 1;
+
+                foundDeposit = 1;
+
+            } else {
+                WheelLeft = 1;
+
+                WheelRight = -2;
+
+            }
+
+
+            break;
+        case 9:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (goingtodeposit == 0) {
+                WheelLeft = 1;
+
+                WheelRight = -2;
+
+            } else if ((Compass >= 0 && Compass < 160) || (Compass <= 360 && Compass > 330)) {
+                WheelLeft = 0;
+
+                WheelRight = -2;
+
+            } else if (goingtodeposit == 1) {
+                WheelLeft = 0;
+
+                WheelRight = -2;
+
+            }
+            break;
+        case 10:
+            WheelLeft = 0;
+            WheelRight = 1;
+            LED_1 = 0;
+            MyState = 0;
+            goingtodeposit = 2;
+
+            foundDeposit = 0;
+
+            break;
+        case 11:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            goingtodeposit = 3;
+
+            foundDeposit = 0;
+
+            break;
+        case 12:
+            WheelLeft = 1;
+            WheelRight = 1;
+            LED_1 = 0;
+            MyState = 0;
+            goingtodeposit = 1;
+
+            break;
+        case 13:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 1;
+            MyState = 0;
+            if (Duration == 1) LoadedObjects++;
+            if (Duration < 6) {
+                WheelLeft = 2;
+                WheelRight = 2;
+            }
+            break;
+        case 14:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (goingtodeposit == 0) {
+                WheelLeft = 2;
+
+                WheelRight = -2;
+
+            } else if (Compass > 180 && Compass < 270) {
+                WheelLeft = 2;
+
+                WheelRight = -2;
+
+            } else {
+                WheelLeft = 0;
+
+                WheelRight = -2;
+
+            }
+            break;
+        case 15:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (goingtodeposit == 0) {
+                WheelLeft = 1;
+
+                WheelRight = -2;
+
+            } else {
+                WheelLeft = 0;
+
+                WheelRight = -2;
+
+            }
+            break;
+        case 16:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (goingtodeposit == 0) {
+                WheelLeft = 1;
+
+                WheelRight = -2;
+
+            } else {
+                WheelLeft = 0;
+
+                WheelRight = -1;
+
+            }
+            break;
+        case 17:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            Teleport = 1;
+            LoadedObjects = 0;
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            Duration = 0;
+            SuperDuration = 0;
+            break;
+        case 18:
+            WheelLeft = 0;
+            WheelRight = 0;
+            LED_1 = 0;
+            MyState = 0;
+            if (Compass < 330 && Compass >= 310) {
+                WheelLeft = -1;
+
+                WheelRight = 1;
+
+            } else if (Compass < 310 && Compass >= 220) {
+                WheelLeft = 3;
+
+                WheelRight = 2;
+
+            } else if (Compass < 220 && Compass > 160) {
+
+                WheelLeft = 2;
+
+                WheelRight = 2;
+
+            } else {
+                WheelLeft = 1;
+
+                WheelRight = 2;
+
+            }
+            break;
+        case 19:
+            WheelLeft = 2;
+            WheelRight = 2;
+            LED_1 = 0;
+            MyState = 0;
+            if (LoadedObjects > 3) {
+                goingtodeposit = 1;
+
+            } else {
+                goingtodeposit = 0;
+
+            }
+
+
+            break;
+        default:
+            break;
     }
 
 }
