@@ -1,6 +1,6 @@
 # RoboCup 2017 - CoSpace
 
-This program was done at a RoboCup 2017 competition in Nagoya, Japan.
+This program was developed at the RoboCup 2017 competition in Nagoya, Japan.
 
 We competed in the *RoboCupJunior CoSpace Rescue Challenge* category as team **Talentum** and reached **2nd place**.
 
@@ -14,7 +14,7 @@ CoSpace: http://cospacerobot.org/competition/cospace-rescue
 * Zoltán Szitás
 * Ádám Urbán
 
-There is a [GUI app](https://github.com/jjurm/robocup17-gui) we developed for generating the definitions of entities that are described in the strategy below.
+There is a [GUI app](https://github.com/jjurm/robocup17-gui) we developed for generating code for the entities that are described in the strategy below.
 
 ---
 
@@ -77,3 +77,10 @@ In this part of the program, we implement the basics, of which some examples inc
 * **Dynamic randomness** - conforming how long should robot stay in a particular area by taking into account how long can he continue in doing that without having reached the maximum number of collected points, which can be estimated by considering the time elapsed from the last deposit and the number of points collected so far.
 * **PID** - Use a proportional–integral–derivative controller for operations such as turning to a specific direction
 * **Avoid position info lost** - detect and keep track of areas with position info lost and avoid them, e.g. by dynamically defining pushout vectors at that locations.
+
+## GUI App
+
+There is a [GUI app](https://github.com/jjurm/robocup17-gui) we developed for generating code for the flow entities.
+
+![screenshot1](https://raw.githubusercontent.com/jjurm/robocup17-gui/master/screenshots/screenshot1.PNG)
+![screenshot2](https://raw.githubusercontent.com/jjurm/robocup17-gui/master/screenshots/screenshot2.PNG)
